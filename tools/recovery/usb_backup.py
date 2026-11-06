@@ -135,7 +135,6 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--loader", type=Path, required=True, help="download agent file (DA_BR.bin)")
-    ap.add_argument("--fast", action="store_true", help="mtkclient's fast USB read path (experimental; compare the MiB/s shown)")
     ap.add_argument("--chunk-mib", type=int, default=CHUNK >> 20, help="size of one READ-FLASH piece (the DA stops at 18 MiB, so keep it small)")
     ap.add_argument("--no-verify", action="store_true", help="read each partition once (half the time, no cross-check)")
     args = ap.parse_args()
@@ -147,8 +146,6 @@ def main():
     from read_by_name import connect, problems  # re-runs this script under the mtkclient venv when not frozen
     os.chdir(args.out)  # mtkclient drops its hwparam/state files in the working directory
     mtk = connect(args.out.resolve(), args.loader.resolve())
-    if args.fast:
-        mtk.port.cdc.set_fast_mode(True)
     try:
         def read(p, path):
             problems.attach()
