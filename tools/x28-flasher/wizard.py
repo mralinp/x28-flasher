@@ -201,22 +201,14 @@ def backup(fl, ui, cfg):
 
 
 def build(fl, ui, cfg):
-    """A flashable image: the newest release, or a local run of the build pipeline. Both land in private/build/native-ubi-*, where Flash looks."""
-    import images
+    """A flashable image assembled here from the newest GitHub release inputs and the user's backup; lands in private/build/native-ubi-*,
+    where Flash looks. (A prebuilt, flashable release image is not offered yet: images.download is kept for that.)"""
     from common import PRIVATE
-    how = ui.select("Where should the image come from?", [("Download the newest release image", "download"), ("Build it here from your own inputs", "local")])
-    dest = PRIVATE / "build"
+    if fl.FROZEN:
+        print("  " + warn("Build needs a source checkout (tools/build and Docker); this packaged app cannot build yet."))
+        return 1
     try:
-        if how == "download":
-            out = images.download(dest)
-            cfg.set("last_image", str(out))
-            print("  " + good(f"Image saved in {out} (checksum and manifest verified)"))
-            print("  " + paint("The checksum only shows the download is intact; Flash still asks you to type the image hash.", "dim"))
-            return 0
-        if fl.FROZEN:
-            print("  " + warn("A local build needs a source checkout (tools/build and Docker). Download the release image or run from a checkout."))
-            return 1
-        return build_local(fl, ui, cfg, dest)
+        return build_local(fl, ui, cfg, PRIVATE / "build")
     except (RuntimeError, ValueError, OSError) as err:
         print("  " + bad(str(err)))
         return 1

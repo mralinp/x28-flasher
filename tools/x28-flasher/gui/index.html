@@ -101,7 +101,7 @@ const ICON = {
 const svg = (d, c = "currentColor", n = 18) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
 const MENU = [
   ["backup", "Backup", "Save every partition on the board to this computer. Do this first."],
-  ["build", "Build image", "Download the newest OpenWrt image, or build one here from your backup and vendor files."],
+  ["build", "Build image", "Downloads the newest userspace release from GitHub and assembles the firmware image from your backup."],
   ["flash", "Flash OpenWrt", "Rehearse, then write an image to slot A. Every guard and typed confirmation stays."],
   ["read", "Read & verify", "Read one partition from the board and compare it with your backup. Writes nothing."],
   ["test", "Self-test", "Check setup, the patched library and a real read. Writes nothing."],
@@ -376,7 +376,7 @@ function viewWizard() { return S.pw ? powerWizard() : `${head("Connect device", 
 function drawView() {
   const v = { home: viewHome, wizard: viewWizard, backup: viewBackup, uart: viewUart,
     flash: () => viewWrite("flash"), access: () => viewWrite("access"), rescue: () => viewWrite("rescue"),
-    build: () => wizardRunner("Build image", "Download the newest release image, or build one here from your backup and vendor files (needs Docker and a source checkout). The checksum is verified; Flash still asks for the image hash.", "build", "Build image"),
+    build: () => wizardRunner("Build image", "Downloads the newest userspace release from GitHub (each file checked against its SHA-256) and assembles the firmware image from your backup. Needs Docker. Flash still asks for the image hash.", "build", "Build image"),
     read: () => wizardRunner("Read & verify", "Reads one partition by name and compares it with your backup. Read-only.", "read", "Read a partition"),
     test: () => wizardRunner("Self-test", "Serial ports, backup, download agent and the patched library. Optionally reads lk_b and compares it. Read-only.", "test", "Run self-test") }[S.screen];
   $("#view").innerHTML = v();
