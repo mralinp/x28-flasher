@@ -25,7 +25,8 @@ FROZEN = getattr(sys, "frozen", False)  # the x28-flasher binary: mtkclient is b
 def ensure_venv():
     """Developer runs re-exec into the private mtkclient venv; a frozen binary already contains mtkclient."""
     venv_python = MTK_HOME / "venv" / "bin" / "python"
-    if FROZEN or os.path.realpath(sys.executable) == os.path.realpath(venv_python):
+    # sys.prefix, not the executable: every venv's python symlinks to the same base interpreter
+    if FROZEN or os.path.realpath(sys.prefix) == os.path.realpath(MTK_HOME / "venv"):
         return
     if not venv_python.exists():
         sys.exit("mtkclient not installed: run tools/recovery/setup_mtkclient.py")

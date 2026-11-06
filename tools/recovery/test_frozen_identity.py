@@ -49,6 +49,20 @@ class FrozenIdentityTests(unittest.TestCase):
             common.ensure_venv()
         execv.assert_called_once()
 
+    def test_other_venv_on_the_same_interpreter_reexecs(self):
+        """Another mtkclient venv shares the base python symlink target; only sys.prefix tells them apart."""
+        with mock.patch.object(common, 'FROZEN', False), mock.patch.object(common.Path, 'exists', return_value=True), \
+                mock.patch.object(common.sys, 'executable', str(common.MTK_HOME / 'venv' / 'bin' / 'python')), \
+                mock.patch.object(common.sys, 'prefix', '/elsewhere/mtkclient/venv'), mock.patch.object(common.os, 'execv') as execv:
+            common.ensure_venv()
+        execv.assert_called_once()
+
+    def test_pinned_venv_does_not_reexec(self):
+        with mock.patch.object(common, 'FROZEN', False), mock.patch.object(common.sys, 'prefix', str(common.MTK_HOME / 'venv')), \
+                mock.patch.object(common.os, 'execv') as execv:
+            common.ensure_venv()
+        execv.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

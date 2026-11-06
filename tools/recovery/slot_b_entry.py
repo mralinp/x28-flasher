@@ -147,13 +147,13 @@ def main():
     try:
         os.chdir(run)
         mtk = open_da(run, loader)
+        xml_module = sys.modules.get('mtkclient.Library.DA.xmlflash.xml_lib')  # before the first flash command
+        if xml_module is None or sha256_file(Path(xml_module.__file__)) != identity['host']:
+            raise ValueError('loaded XML implementation differs from verified host')
         if uart:
             check_uart(uart)
         check_unit(mtk.daloader, parts['proinfo'], run)
         check_chip(run, backup)
-        xml_module = sys.modules.get('mtkclient.Library.DA.xmlflash.xml_lib')
-        if xml_module is None or sha256_file(Path(xml_module.__file__)) != identity['host']:
-            raise ValueError('loaded XML implementation differs from verified host')
         session.run_session(mtk.daloader, spec, original, candidate, run, mode=args.mode)
         receipt['status'] = 'VERIFIED'
         print('Target and guards verified. No reboot issued. Before any reboot check slot A\'s boot counter; do not reboot casually.')
