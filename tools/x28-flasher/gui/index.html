@@ -182,7 +182,9 @@ function drawConsole() {
   const key = JSON.stringify([running, j.tail, opts, j.code]);
   if (ctl.dataset.key === key) return;
   ctl.dataset.key = key;
-  if (running) {
+  if (running && !WRITES.includes(j.kind)) {
+    ctl.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><span class="mut" style="flex:1">Working… nothing to answer.</span><button type="button" class="btn" data-act="stop" title="Same as Ctrl-C in the terminal">Stop</button></div>`;
+  } else if (running) {
     ctl.innerHTML = `<form data-act="send" style="display:flex;gap:8px;flex-wrap:wrap">
       ${yn ? `<button type="button" class="btn" data-send="y">Yes</button><button type="button" class="btn" data-send="n">No</button>` : ""}
       ${opts.map(([n, l]) => `<button type="button" class="btn" data-send="${n}">${esc(n)}) ${esc(l)}</button>`).join("")}
@@ -319,6 +321,7 @@ function wizardRunner(title, sub, action, label, extra = "") {
   <div><button class="primary" data-act="run" data-run="${action}" ${busy() ? "disabled" : ""}>${label}</button></div>
   ${S.job && S.job.kind === action ? consoleHtml() : ""}`;
 }
+const WRITES = ["flash", "access", "rescue"];
 const RISK = {
   flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit", "I will keep the modem powered and the USB cable connected until it finishes"]],
   access: ["Stock SSH access", "Builds a key-only SSH candidate for slot B from your backup, rehearses it, then writes it. Only the overlay tail of rootfs_b changes.", ["The backup was taken just now, with the unit idle", "I will keep the modem powered and the USB cable connected until it finishes"]],
@@ -330,15 +333,19 @@ function viewWrite(action) {
   const uart = st.uart && st.uart.running;
   const started = S.job && S.job.kind === action;
   return `${head(title, sub)}
-  ${started ? "" : `<div class="box" style="padding:18px;display:grid;gap:12px;max-width:760px">
-    <b>Before you start</b>
-    <div class="mut">${uart ? "✓ UART monitor is running; its log is used." : "UART monitor is off. A write needs its log unless you tell the tool you have no adapter."}</div>
-    ${items.map((t) => `<label class="chk"><input class="sw risk" type="checkbox"><span>${esc(t)}</span></label>`).join("")}
-    <label class="chk"><input class="sw risk" type="checkbox"><span>I understand this can leave the modem unbootable, and that Stop cannot undo a write</span></label>
-    <label class="chk"><input class="sw risk" type="checkbox"><span>I will type the confirmation phrase myself when the tool asks for it</span></label>
-  </div>
-  <div class="warn" style="max-width:760px">The way back from a failed write is a USB restore from your backup. You answer each question below; the tool still asks for its exact phrase.</div>
-  <div><button class="primary" id="accept" data-act="write" data-run="${action}" disabled>I accept the risk, start</button></div>`}
+  ${started ? "" : `<div class="mut">${uart ? "✓ UART monitor is running; its log is used." : "UART monitor is off. A write needs its log unless you tell the tool you have no adapter."}</div>
+  <div><button class="primary" data-act="confirm-write">Start…</button></div>
+  <dialog id="risk" style="max-width:560px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:inherit;padding:24px">
+    <h3 style="margin:0 0 12px">Risk of writing to the modem</h3>
+    <div style="display:grid;gap:8px;line-height:1.5">
+      <div>${esc(title)} writes to the modem's flash. Read this before you accept:</div>
+      ${items.map((t) => `<div>• ${esc(t)}</div>`).join("")}
+      <div>• This can leave the modem unbootable, and Stop cannot undo a write.</div>
+      <div>• The way back from a failed write is a USB restore from your backup.</div>
+      <div>• The tool still asks for its exact confirmation phrase, which you type yourself.</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px"><button class="btn" data-act="risk-cancel">Cancel</button><button class="primary" data-act="write" data-run="${action}">I accept the risk, start</button></div>
+  </dialog>`}
   ${started ? consoleHtml() : ""}`;
 }
 function viewUart() {
@@ -415,21 +422,19 @@ document.addEventListener("click", async (e) => {
   if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader")?.value, twice: $("#bk-twice").checked });
   if (a === "run") { S.job = null; if (await start(t.dataset.run)) drawView(); return; }
   if (a === "write") {
-    if (![...document.querySelectorAll(".risk")].every((c) => c.checked)) return;  // the server refuses without accept too
+    $("#risk")?.close();  // the dialog is the user's accept; the server refuses without accept: true too
     S.job = null;
     if (await start(t.dataset.run, { accept: true })) drawView();
     return;
   }
+  if (a === "confirm-write") return $("#risk").showModal();
+  if (a === "risk-cancel") return $("#risk").close();
   if (a === "stop") { const j = S.job; await api(`/api/job/${j.id}/stop`, { force: false }); return; }
   if (a === "uart") {
     const on = !(S.st.uart && S.st.uart.running);
     try { await api("/api/uart", { on, port: $("#u-port").value, baud: Number($("#u-baud").value) }); } catch (er) { alert(er.message); }
     await refresh(); drawView();
   }
-});
-document.addEventListener("change", (e) => {
-  if (!e.target.classList.contains("risk")) return;
-  $("#accept").disabled = ![...document.querySelectorAll(".risk")].every((c) => c.checked);
 });
 document.addEventListener("submit", async (e) => {
   e.preventDefault();
