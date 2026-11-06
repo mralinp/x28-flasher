@@ -34,6 +34,8 @@ def ensure_venv():
 
 # Quectel T750 download agent from the community X28 package (see docs/RECOVERY.md); mtkclient's bundled one refuses reads
 VENDOR_DA = PRIVATE / "vendor-da" / "20261022-mt6890-cpe-recovery-zlt-x28" / "extracted" / "DA_BR.bin"
+if FROZEN and (Path(sys._MEIPASS) / "vendor-da" / "DA_BR.bin").is_file():  # a build made with build_binary.py --loader carries its own
+    VENDOR_DA = Path(sys._MEIPASS) / "vendor-da" / "DA_BR.bin"
 
 _MTD_LINE = re.compile(r'mtd(\d+): ([0-9a-f]+) ([0-9a-f]+) "([A-Za-z0-9_]+)"')
 

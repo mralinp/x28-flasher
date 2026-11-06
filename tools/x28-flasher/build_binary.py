@@ -45,6 +45,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--home", type=Path, required=True)
     ap.add_argument("--out", type=Path, default=Path("dist"))
+    ap.add_argument("--loader", type=Path, help="your DA_BR.bin: put it inside this build only (it is Quectel's, never committed or built by CI; do not share the result)")
     args = ap.parse_args()
     home = args.home.resolve()
     os.environ["X28_MTKCLIENT"] = str(home)  # before common is imported
@@ -84,6 +85,12 @@ def main():
     data += [(TOOLS / "recovery" / "x28-mtd.txt", "recovery")]
     data += [(TOOLS / "build" / n, "build") for n in BUILD_FILES]
     data += [(HERE / "gui" / "index.html", "gui"), (HERE / "device_info.py", "gui")]  # the page and the tool it runs
+    if args.loader:
+        from restore_entry import DA_HASH
+        if hashlib.sha256(args.loader.read_bytes()).hexdigest() != DA_HASH:
+            sys.exit(f"{args.loader} is not the download agent the tools expect (SHA-256 differs)")
+        shutil.copy2(args.loader, work / "DA_BR.bin")  # whatever it is called, the tools look for this name
+        data += [(work / "DA_BR.bin", "vendor-da")]
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--name", "x28-flasher",
            "--distpath", args.out, "--workpath", work, "--specpath", work, "--exclude-module", "PySide6", "--exclude-module", "mtkclient.gui",
            "--collect-data", "mtkclient", "--collect-binaries", "usb"]
