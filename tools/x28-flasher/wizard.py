@@ -218,35 +218,27 @@ def backup_problem(path, check_hash=False):
 
 
 def build(fl, ui, cfg):
-    """A flashable image assembled here from the newest GitHub release inputs and the user's backup; lands in private/build/native-ubi-*,
-    where Flash looks. (A prebuilt, flashable release image is not offered yet: images.download is kept for that.)"""
-    from common import PRIVATE
+    """A flashable image assembled here from a GitHub release of the OpenWrt repo and the user's backup; lands in private/build/native-ubi-*,
+    where Flash looks. The page passes its answers in X28_BUILD (nothing is asked); the terminal asks for them. (A prebuilt, flashable release
+    image is not offered yet: images.download is kept for that.)"""
+    import images
+    from common import DEFAULT_BACKUP, PRIVATE
     if fl.FROZEN:
         print("  " + warn("Build needs a source checkout (tools/build and Docker); this packaged app cannot build yet."))
         return 1
     try:
-        given = json.loads(os.environ["X28_BUILD"]) if os.environ.get("X28_BUILD") else None  # the page's form: nothing is asked here
+        given = json.loads(os.environ["X28_BUILD"]) if os.environ.get("X28_BUILD") else None
+        if not given:
+            tags = images.releases()
+            given = {"backup": ask_path(ui, cfg, "backup", "Folder with your verified backup", DEFAULT_BACKUP, True),
+                     "tag": ui.select("Which release should the image be built from?", [(f"{r['tag']}  {r['date']}", r["tag"]) for r in tags])}
         return build_local(fl, ui, cfg, PRIVATE / "build", given)
     except (RuntimeError, ValueError, OSError) as err:
         print("  " + bad(str(err)))
         return 1
 
 
-def choose_key(ui, cfg):
-    """The key that goes into the image is never guessed: the user picks it from ~/.ssh each time, the last choice listed first."""
-    keys = sorted(str(p) for p in (Path.home() / ".ssh").glob("*.pub"))
-    last = cfg.get("build_key")
-    keys.sort(key=lambda k: k != last)
-    choice = ui.select("Which SSH public key goes into the image? (it is the only key that can log in)",
-                       [(k, k) for k in keys] + [("Another file...", None)]) if keys else None
-    key = choice or ui.text("Path of the SSH public key").strip()
-    while not Path(key).is_file():
-        key = ui.text(f"not found: {key}. Path of the SSH public key").strip()
-    cfg.set("build_key", key)
-    return key
-
-
-def build_local(fl, ui, cfg, dest, given=None):
+def build_local(fl, ui, cfg, dest, given):
     import images
     import shutil
     import subprocess
@@ -254,7 +246,7 @@ def build_local(fl, ui, cfg, dest, given=None):
     if not shutil.which("docker") or subprocess.call(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL):
         print("  " + bad("Docker is not installed or not running: extracting the stock rootfs and packaging the image run in a container."))
         return 1
-    backup = Path(given["backup"] if given else ask_path(ui, cfg, "backup", "Folder with your verified backup", DEFAULT_BACKUP, True))
+    backup = Path(given["backup"])
     problem = backup_problem(backup, check_hash=True)
     if problem:
         print("  " + bad(problem))
@@ -267,7 +259,7 @@ def build_local(fl, ui, cfg, dest, given=None):
     cache.mkdir(parents=True, exist_ok=True)
     try:
         print("  " + paint("Fetching the public inputs (userspace, feed packages, OpenWrt ipks), each checked against its SHA-256...", "dim"))
-        inputs = images.fetch_inputs(cache)
+        inputs = images.fetch_inputs(cache, given["tag"])
         stock = cache / "rootfs-b-system.tar.gz"
         if not stock.is_file():
             print("  " + paint("Extracting the stock rootfs from your backup in the container...", "dim"))
@@ -280,13 +272,11 @@ def build_local(fl, ui, cfg, dest, given=None):
         print("  " + bad(str(err)))
         return 1
     inputs["stock"] = str(stock)
-    inputs["key"] = given["key"] if given else choose_key(ui, cfg)
-    inputs["kmods"] = given["kmods"] if given else ask_path(ui, cfg, "build_kmods", "Folder with the built kernel modules (private SDK build)", PRIVATE / "kmods", True)
+    if "kmods" not in inputs:
+        print("  " + warn(f"{given['tag']} carries no kernel modules asset: the image is built without them (no WireGuard or TPROXY)."))
     work = dest / f"local-{images.stamp()}"
     out = dest / f"native-ubi-local-{images.stamp()}"
     print("  " + paint("Writes only under private/build. Nothing touches the router.", "dim"))
-    if not given and not ui.confirm(f"Build the image in {work.name} now? (several minutes)", True):
-        return 0
     work.mkdir(parents=True)
     for cmd in images.local_commands(inputs, work, out, REPO):
         print("  " + paint("$ " + " ".join(cmd[:3]) + " ...", "dim"))

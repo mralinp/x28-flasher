@@ -64,21 +64,21 @@ class FakeFl:
 
 
 class CommandTests(unittest.TestCase):
-    def test_build_needs_a_finished_backup_a_key_and_kmods(self):
+    def test_build_needs_a_finished_backup_and_a_release(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
             (d / "bk/images").mkdir(parents=True)
             (d / "key.pub").write_text("ssh-ed25519 AAAA")
             (d / "km").mkdir()
-            params = {"backup": str(d / "bk"), "key": str(d / "key.pub"), "kmods": str(d / "km")}
+            params = {"backup": str(d / "bk"), "tag": "v1"}
             with self.assertRaisesRegex(ValueError, "ARCHIVE.sha256"):  # not finished
                 gui.build_command(FakeFl, "build", params, "DA")
             (d / "bk/ARCHIVE.sha256").write_text("x  a.tar")
             with self.assertRaisesRegex(ValueError, "rootfs_b"):
                 gui.build_command(FakeFl, "build", params, "DA")
             (d / "bk/images/mtd10-rootfs_b.bin").write_bytes(b"")
-            with self.assertRaisesRegex(ValueError, "SSH public key"):
-                gui.build_command(FakeFl, "build", {**params, "key": ""}, "DA")
+            with self.assertRaisesRegex(ValueError, "release"):
+                gui.build_command(FakeFl, "build", {**params, "tag": ""}, "DA")
             self.assertIn("build", gui.build_command(FakeFl, "build", params, "DA"))
 
     def test_backup_needs_a_folder_and_maps_verify(self):

@@ -266,7 +266,7 @@ def public_key(text):
 
 
 def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
-    key=public_key(key)
+    key=public_key(key) if key else None  # no key: the flasher builds an image without one
     if output.exists():raise FileExistsError(output)
     manifest=json.loads((stage/'manifest.json').read_text());raw=(stage/'rootfs-staging.tar.gz').read_bytes()
     if manifest.get('flashable') is not False or not (stage/'NOT-FLASHABLE').is_file() or digest(raw)!=manifest.get('archive_sha256'):
@@ -506,7 +506,7 @@ config interface 'wan'
  option GatewayPorts 'off'
  option mdns '0'
 """)
-    put('etc/dropbear/authorized_keys',key,0o600)
+    if key:put('etc/dropbear/authorized_keys',key,0o600)
     # Like stock OpenWrt root starts with an empty password so LuCI can log in and ask for one; SSH takes keys or the root password; dropbear never accepts an empty one, so password login starts once the owner sets it (LuCI or passwd).
     rows=tree['etc/shadow'][1].decode().splitlines();found=False;locked=[]
     for row in rows:
@@ -528,7 +528,7 @@ config interface 'wan'
         for name,(info,data) in sorted(tree.items()):
             meta=copy.copy(info);tar.addfile(meta,io.BytesIO(data) if meta.isfile() else None)
     report={'flashable':False,'input_stage_sha256':digest(raw),'archive_sha256':digest(archive.read_bytes()),
-            'lan_device':LAN,'lan_ports':list(LAN_PORTS),'switch_table':{str(v):x[0] for v,x in SWITCH.items()},'swconfig_sha256':digest(tree['sbin/swconfig'][1]),'swconfig_added':swconfig_added,'modem_added':modem_added,'bootok_added':bootok_added,'stock_sha256':digest(stock_bytes),'lan_address':'192.168.70.1/24','ssh_port':22,'public_key_sha256':digest(key.encode()),
+            'lan_device':LAN,'lan_ports':list(LAN_PORTS),'switch_table':{str(v):x[0] for v,x in SWITCH.items()},'swconfig_sha256':digest(tree['sbin/swconfig'][1]),'swconfig_added':swconfig_added,'modem_added':modem_added,'bootok_added':bootok_added,'stock_sha256':digest(stock_bytes),'lan_address':'192.168.70.1/24','ssh_port':22,'public_key_sha256':digest(key.encode()) if key else None,
             'removed_paths':removed,'enabled_start_links':sorted(n for n in tree if n.startswith('etc/rc.d/S')),
             'limits':['Modem stack from stock, started by x28-modem; reboot persistence unverified (#131)','UART console shell (ttyS0, no password) is physical-access root','Switch table is stock-observed, never applied on hardware; physical socket-4 mapping is operator-confirmed only','No web UI','LEDs show no-service without the modem stack','Root/key login still needs runtime test','No overlay/UBI/slot/signature readiness']}
     (output/'manifest.json').write_text(json.dumps(report,indent=2)+'\n');(output/'INCOMPLETE').unlink()
@@ -537,10 +537,10 @@ config interface 'wan'
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--stage',type=Path,required=True)
-    ap.add_argument('--public-key',type=Path,required=True);ap.add_argument('--stock',type=Path,required=True);ap.add_argument('--output',type=Path,required=True)
+    ap.add_argument('--public-key',type=Path);ap.add_argument('--stock',type=Path,required=True);ap.add_argument('--output',type=Path,required=True)
     ap.add_argument('--kmods',type=Path,required=True,help='the modules package/x28-kmods/build.sh built for this kernel: WireGuard, TPROXY, socket')
     ap.add_argument('--ipk',type=Path,nargs='+',required=True,help="the X28 feed's ipset, libipset13 and x28-ipset-kernel, which Passwall2 needs")
-    args=ap.parse_args();print(json.dumps(integrate(args.stage,args.public_key.read_text(),args.stock,args.output,args.kmods,args.ipk),indent=2))
+    args=ap.parse_args();print(json.dumps(integrate(args.stage,args.public_key.read_text() if args.public_key else None,args.stock,args.output,args.kmods,args.ipk),indent=2))
 
 
 if __name__=='__main__':main()

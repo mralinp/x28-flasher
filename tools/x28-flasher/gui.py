@@ -163,13 +163,10 @@ def build_command(fl, action, params, loader):
                           + (["--chunk-mib", str(int(params["chunk"]))] if params.get("chunk") else []))
     if action == "build":
         import wizard
-        key, kmods = str(params.get("key") or ""), str(params.get("kmods") or "")
         if problem := wizard.backup_problem(str(params.get("backup") or "")):
             raise ValueError(problem)
-        if not Path(key).is_file():
-            raise ValueError("choose the SSH public key that goes into the image")
-        if not Path(kmods).is_dir():
-            raise ValueError("choose the folder with the built kernel modules")
+        if not str(params.get("tag") or "").strip():
+            raise ValueError("choose the release to build from")
         return action_cmd(fl, action)
     if action in WRITE_ACTIONS and params.get("accept") is not True:
         raise ValueError("accept the risk first: this writes the board")
@@ -205,7 +202,7 @@ class App:
             argv = build_command(self.fl, action, params, loader)
             env = {"X28_RECOVERY": str(self.fl.RECOVERY)}
             if action == "build":
-                env["X28_BUILD"] = json.dumps({k: str(params[k]) for k in ("backup", "key", "kmods")})
+                env["X28_BUILD"] = json.dumps({k: str(params[k]) for k in ("backup", "tag")})
             if self.uart and self.uart["cap"].is_alive():
                 env["X28_UART_LOG"] = str(self.uart["path"])
             def on_line(line):
@@ -256,9 +253,7 @@ class App:
         for root in list(roots):
             found += [root, *(d for d in root.glob("*") if d.is_dir())] if root.is_dir() else []
         backups = sorted({str(d) for d in found if wizard.backup_problem(d) is None})
-        kmods = PRIVATE / "kmods"
-        return {"backups": backups, "keys": sorted(str(p) for p in (Path.home() / ".ssh").glob("*.pub")),
-                "kmods": str(kmods) if kmods.is_dir() else "", "docker": bool(shutil.which("docker"))}
+        return {"backups": backups, "docker": bool(shutil.which("docker"))}
 
     def state(self):
         from common import DEFAULT_BACKUP, PRIVATE
@@ -379,6 +374,9 @@ def make_handler(app):
                         raise ValueError("that file does not exist")
                     app.config().set("loader", str(data["path"]))
                     return self.reply(200, {"ok": True})
+                if path == ["api", "releases"]:
+                    import images
+                    return self.reply(200, {"releases": images.releases()})
                 if path == ["api", "check_backup"]:
                     import wizard
                     return self.reply(200, {"problem": wizard.backup_problem(str(data.get("path") or ""))})

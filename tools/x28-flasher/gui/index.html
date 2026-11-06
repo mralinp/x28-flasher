@@ -327,13 +327,13 @@ function wizardRunner(title, sub, action, label, extra = "") {
   ${S.job && S.job.kind === action ? consoleHtml() : ""}`;
 }
 function viewBuild() {
+  if (!S.releases && !S.relError) api("/api/releases", {}).then((r) => { S.releases = r.releases; if (S.screen === "build") drawView(); }, (e) => { S.relError = "Could not load the release list: " + e.message; if (S.screen === "build") drawView(); });
   const st = S.st, b = st.build, sel = (id, items, empty) => items.length ? `<select id="${id}">${items.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}</select>` : `<input type="text" id="${id}" placeholder="${empty}">`;
   const blocked = st.frozen ? "This packaged app cannot build yet: it needs the build scripts and Docker, which run from a source checkout." : !b.docker ? "Docker is not installed. Install and start Docker Desktop, then reload." : !b.backups.length ? "Build needs a finished backup. Run Backup to the end first, or choose a backup folder below." : "";
   return `${head("Build image", "Downloads the newest userspace release from GitHub (each file checked against its SHA-256) and assembles the firmware image from your backup. Writes only under private/build; nothing touches the modem.")}
   <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
     <label class="f"><span class="lbl">Backup to build from</span><span style="display:flex;gap:8px">${sel("bd-backup", b.backups, "Folder of a finished backup")}<button type="button" class="btn" data-act="browse" data-target="bd-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
-    <label class="f"><span class="lbl">SSH public key that goes into the image (the only key that can log in)</span><span style="display:flex;gap:8px">${sel("bd-key", b.keys, "Path of a .pub file")}<button type="button" class="btn" data-act="browse" data-target="bd-key" data-kind="file" style="flex:none;height:40px">Browse…</button></span></label>
-    <label class="f"><span class="lbl">Kernel modules folder</span><span style="display:flex;gap:8px"><input type="text" id="bd-kmods" value="${esc(b.kmods)}"><button type="button" class="btn" data-act="browse" data-target="bd-kmods" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
+    <label class="f"><span class="lbl">Version to build</span>${S.releases ? `<select id="bd-tag">${S.releases.map((r, i) => `<option value="${esc(r.tag)}">${esc(r.tag)}  ·  ${esc(r.date)}${i === 0 ? "  ·  newest" : ""}${r.kmods ? "" : "  ·  no kernel modules"}</option>`).join("")}</select>` : `<span class="mut">${S.relError ? esc(S.relError) : "Loading the release list from GitHub…"}</span>`}</label>
     ${blocked ? `<div class="warn">${esc(blocked)}</div>` : ""}
     <div><button class="primary" id="bd-go" data-act="build" ${busy() || (st.frozen || !b.docker || !b.backups.length) ? "disabled" : ""}>Build image</button></div>
   </div>
@@ -449,7 +449,8 @@ document.addEventListener("click", async (e) => {
   if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
   if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader")?.value, twice: $("#bk-twice").checked });
   if (a === "build") {
-    const params = { backup: $("#bd-backup").value, key: $("#bd-key").value, kmods: $("#bd-kmods").value };
+    const params = { backup: $("#bd-backup").value, tag: $("#bd-tag")?.value };
+    if (!params.tag) return alert("The release list is not loaded yet.");
     try {
       const { problem } = await api("/api/check_backup", { path: params.backup });
       if (problem) return alert(problem);

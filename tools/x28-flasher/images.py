@@ -31,6 +31,17 @@ def latest_release(fetch=get, repo=REPO):
     return None
 
 
+def releases(fetch=get, repo=REPO):
+    """Releases that carry the userspace tarball, newest first: [{tag, date, kmods}] (kmods: the release also carries the kernel modules)."""
+    out = []
+    for rel in json.loads(fetch(f"https://api.github.com/repos/{repo}/releases?per_page=30")):
+        names = [a["name"] for a in rel.get("assets", [])]
+        if any(n.startswith("x28-userspace-") and n.endswith("-rootfs.tar.gz") for n in names):
+            out.append({"tag": rel["tag_name"], "date": (rel.get("published_at") or "")[:10],
+                        "kmods": any(n.startswith("x28-kmods-") and n.endswith(".tar.gz") for n in names)})
+    return out
+
+
 def download(dest_root, fetch=get, repo=REPO):
     """Fetch, verify and unpack the newest release image into dest_root/native-ubi-release-<tag>; returns that folder."""
     found = latest_release(fetch, repo)
@@ -104,12 +115,29 @@ def extract_overlay(archive, dest):
     return dest
 
 
-def fetch_inputs(dest, fetch=get):
+def extract_kmods(archive, dest):
+    """The built kernel modules: only top-level *.ko files are accepted."""
+    if dest.is_dir():
+        return dest
+    with tarfile.open(archive) as tar:
+        members = tar.getmembers()
+        for m in members:
+            if not m.isfile() or Path(m.name).name != m.name.removeprefix("./") or not m.name.endswith(".ko"):
+                raise ValueError(f"unexpected kernel module entry: {m.name}")
+        tmp = dest.with_name(dest.name + ".part")
+        tar.extractall(tmp, members)
+    tmp.rename(dest)
+    return dest
+
+
+def fetch_inputs(dest, tag="latest", fetch=get):
     """The public build inputs, cached in dest: userspace tarball, the firmware overlay (package files), the two OpenWrt ipks and the X28 feed's ipset packages."""
     out = {"extra_ipks": [], "feed": []}
-    for name, (url, want) in release_assets("latest", fetch).items():
+    for name, (url, want) in release_assets(tag, fetch).items():
         if name.startswith("x28-userspace-") and name.endswith("-rootfs.tar.gz"):
             out["modern"] = str(fetch_checked(url, want, dest / name, fetch))
+        if name.startswith("x28-kmods-") and name.endswith(".tar.gz"):
+            out["kmods"] = str(extract_kmods(fetch_checked(url, want, dest / name, fetch), dest / name.removesuffix(".tar.gz")))
         if name.startswith("x28-overlay-") and name.endswith(".tar.gz"):
             out["overlay"] = str(extract_overlay(fetch_checked(url, want, dest / name, fetch), dest / name.removesuffix(".tar.gz")))
     for name, (url, want) in release_assets("feed-2", fetch).items():
@@ -145,8 +173,9 @@ def local_commands(inputs, work, out, repo, python="python3"):
     return [
         [python, str(repo / "tools/build/stage_native.py"), "--stock", inputs["stock"], "--modern", inputs["modern"],
          "--ipk", *inputs["extra_ipks"], "--output", str(stage)],
-        [python, str(repo / "tools/build/first_boot.py"), "--stage", str(stage), "--public-key", inputs["key"], "--stock", inputs["stock"],
-         "--output", str(profile), "--kmods", inputs["kmods"], "--ipk", *inputs["feed"]],
+        [python, str(repo / "tools/build/first_boot.py"), "--stage", str(stage), "--stock", inputs["stock"], "--output", str(profile),
+         *(["--public-key", inputs["key"]] if inputs.get("key") else []), *(["--kmods", inputs["kmods"]] if inputs.get("kmods") else []),
+         "--ipk", *inputs["feed"]],
         ["docker", "build", "-t", "x28-firmware-tools:ubi", "-f", str(repo / "tools/firmware/Dockerfile"), str(repo / "tools/firmware")],
         ["docker", "run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
          "--tmpfs", "/tmp:rw,exec,size=768m", "-v", f"{repo / 'tools'}:/tools:ro", "-v", f"{profile}:/profile:ro",
