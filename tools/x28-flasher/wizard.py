@@ -272,8 +272,6 @@ def build_local(fl, ui, cfg, dest, given):
         print("  " + bad(str(err)))
         return 1
     inputs["stock"] = str(stock)
-    if "kmods" not in inputs:
-        print("  " + warn(f"{given['tag']} carries no kernel modules asset: the image is built without them (no WireGuard or TPROXY)."))
     work = dest / f"local-{images.stamp()}"
     out = dest / f"native-ubi-local-{images.stamp()}"
     print("  " + paint("Writes only under private/build. Nothing touches the router.", "dim"))

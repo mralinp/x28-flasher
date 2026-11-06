@@ -333,7 +333,7 @@ function viewBuild() {
   return `${head("Build image", "Downloads the newest userspace release from GitHub (each file checked against its SHA-256) and assembles the firmware image from your backup. Writes only under private/build; nothing touches the modem.")}
   <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
     <label class="f"><span class="lbl">Backup to build from</span><span style="display:flex;gap:8px">${sel("bd-backup", b.backups, "Folder of a finished backup")}<button type="button" class="btn" data-act="browse" data-target="bd-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
-    <label class="f"><span class="lbl">Version to build</span>${S.releases ? `<select id="bd-tag">${S.releases.map((r, i) => `<option value="${esc(r.tag)}">${esc(r.tag)}  ·  ${esc(r.date)}${i === 0 ? "  ·  newest" : ""}${r.kmods ? "" : "  ·  no kernel modules"}</option>`).join("")}</select>` : `<span class="mut">${S.relError ? esc(S.relError) : "Loading the release list from GitHub…"}</span>`}</label>
+    <label class="f"><span class="lbl">Version to build</span>${S.releases ? `<select id="bd-tag">${S.releases.map((r, i) => `<option value="${esc(r.tag)}">${esc(r.tag)}  ·  ${esc(r.date)}${i === 0 ? "  ·  newest" : ""}</option>`).join("")}</select>` : `<span class="mut">${S.relError ? esc(S.relError) : "Loading the release list from GitHub…"}</span>`}</label>
     ${blocked ? `<div class="warn">${esc(blocked)}</div>` : ""}
     <div><button class="primary" id="bd-go" data-act="build" ${busy() || (st.frozen || !b.docker || !b.backups.length) ? "disabled" : ""}>Build image</button></div>
   </div>
