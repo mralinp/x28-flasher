@@ -115,6 +115,20 @@ class SetupTests(unittest.TestCase):
             self.assertNotIn('"hi"', run.call_args[0][0][-1])
 
 
+class RunningTests(unittest.TestCase):
+    def test_a_second_launch_finds_the_server_only_while_it_is_alive(self):
+        run = Path(tempfile.mkdtemp()) / "running.json"
+        with unittest.mock.patch.object(gui, "RUN_FILE", run):
+            self.assertIsNone(gui.running_server())  # no file
+            run.write_text(json.dumps({"pid": 99999999, "port": 1, "token": "t"}))
+            self.assertIsNone(gui.running_server())  # stale pid
+            server = ThreadingHTTPServer(("127.0.0.1", 0), gui.make_handler(gui.App(FakeFl)))
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            self.addCleanup(server.shutdown)
+            run.write_text(json.dumps({"pid": __import__("os").getpid(), "port": server.server_address[1], "token": "t"}))
+            self.assertEqual(gui.running_server()["token"], "t")
+
+
 class ServerTests(unittest.TestCase):
     def setUp(self):
         self.app = gui.App(FakeFl)

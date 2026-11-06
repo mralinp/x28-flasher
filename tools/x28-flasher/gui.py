@@ -12,6 +12,7 @@ import pty
 import secrets
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import termios
@@ -337,6 +338,16 @@ def make_handler(app):
                     if path[3] == "stop":
                         job.stop(bool(data.get("force")))
                         return self.reply(200, {"ok": True})
+                if path == ["api", "quit"]:  # the page's Quit button: stop the background server
+                    if app.current and app.current.code is None:
+                        raise RuntimeError("a job is still running: stop it first")
+                    def bye():
+                        time.sleep(0.3)
+                        app.uart_stop()
+                        RUN_FILE.unlink(missing_ok=True)
+                        os._exit(0)
+                    threading.Thread(target=bye, daemon=True).start()
+                    return self.reply(200, {"ok": True})
                 if path == ["api", "loader"]:
                     if not Path(str(data.get("path", ""))).is_file():
                         raise ValueError("that file does not exist")
@@ -364,8 +375,28 @@ def make_handler(app):
     return Handler
 
 
+RUN_FILE = Path.home() / ".x28-flasher" / "running.json"  # pid, port, token of the server that is up, so a second launch reuses it
+
+
+def running_server():
+    """The server another launch left running, or None."""
+    try:
+        info = json.loads(RUN_FILE.read_text())
+        os.kill(info["pid"], 0)
+        socket.create_connection(("127.0.0.1", info["port"]), timeout=1).close()
+        return info
+    except (OSError, ValueError, KeyError):
+        return None
+
+
 def serve(fl, open_browser=True, port=0):
     restarted = "X28_PORT" in os.environ  # started again by /api/restart: same address, and the open page reconnects by itself
+    if not restarted and (other := running_server()):  # opened the app twice: just show the page that is already up
+        url = f"http://127.0.0.1:{other['port']}/?t={other['token']}"
+        print(f"x28-flasher is already running at {url}", flush=True)
+        if open_browser:
+            webbrowser.open(url)
+        return 0
     app = App(fl)
     port = int(os.environ.pop("X28_PORT", port))
     for attempt in range(20):  # the old process may still hold the port for a moment
@@ -379,6 +410,9 @@ def serve(fl, open_browser=True, port=0):
     server.daemon_threads = True
     app.port = server.server_address[1]
     url = f"http://127.0.0.1:{app.port}/?t={app.token}"
+    RUN_FILE.parent.mkdir(mode=0o700, exist_ok=True)
+    RUN_FILE.write_text(json.dumps({"pid": os.getpid(), "port": app.port, "token": app.token}))
+    RUN_FILE.chmod(0o600)
     print(f"x28-flasher is open at {url}\nPress Ctrl-C here to quit.", flush=True)
     if open_browser and not restarted:
         webbrowser.open(url)
@@ -390,4 +424,5 @@ def serve(fl, open_browser=True, port=0):
         app.uart_stop()
         if app.current:
             app.current.stop()
+        RUN_FILE.unlink(missing_ok=True)
     return 0

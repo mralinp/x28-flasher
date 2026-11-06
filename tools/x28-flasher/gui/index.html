@@ -71,6 +71,7 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 ui-monospa
   <header>
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
     <b style="font-size:14px">X28 Flasher</b><span class="mut" style="font-size:12px">MediaTek · XML download agent</span>
+    <span style="flex:1"></span><button class="btn" data-act="quit" title="Stop the background app">Quit</button>
   </header>
   <div class="body">
     <aside>
@@ -381,6 +382,11 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.send !== undefined) return api(`/api/job/${S.job.id}/input`, { text: t.dataset.send });
   const a = t.dataset.act;
   if (a === "connect") { S.screen = "wizard"; return openPower("identify", {}); }
+  if (a === "quit") {
+    try { await api("/api/quit", {}); } catch (er) { return alert(er.message); }
+    document.body.innerHTML = `<div style="padding:64px;text-align:center"><h2>X28 Flasher has stopped</h2><p class="lead" style="margin-top:8px">Open the app again to continue. You can close this tab.</p></div>`;
+    return;
+  }
   if (a === "setup" || a === "libusb") { S.job = null; if (await start(a)) drawView(); return; }
   if (a === "restart") {
     try { await api("/api/restart", {}); } catch (er) { return alert(er.message); }

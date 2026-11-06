@@ -18,6 +18,6 @@ Licence: GPL-2.0-only.
 
 ## Using it
 
-Double-click `Start X28 Flasher.command` (or run `python3 tools/x28-flasher/x28_flasher.py`). The page opens in your browser. On a fresh checkout its Setup box installs libusb (needs Homebrew) and the pinned, patched mtkclient with one click each, restarts itself, and lets you choose your download agent file. Needs Python 3.10 or newer; `x28_flasher.py wizard` is the terminal menu.
+Open `X28 Flasher.app` (double-click it in Finder). It starts the flasher in the background and shows the page in your browser; opening it again just shows the same page, and the page's **Quit** button stops it. On a fresh checkout the page's Setup box installs libusb (needs Homebrew) and the pinned, patched mtkclient with one click each, restarts itself, and lets you choose your download agent file. Needs Python 3.10 or newer. Log: `~/Library/Logs/x28-flasher.log`. From a terminal: `python3 tools/x28-flasher/x28_flasher.py` (`wizard` = the terminal menu).
 
 The page walks you through Connect (power off, 10 s, power on), then Backup, Build image, Flash OpenWrt, Read & verify, Self-test, UART monitor, Stock SSH access and Rescue (slot B). Every step runs the guarded tools; a step that writes needs the risk checklist ticked and the tool's own typed phrase. Only this computer's browser can reach the page. The packaged binary is read-only (#272). Telnet is not offered: `stock_access.py` sets up key-only SSH.
