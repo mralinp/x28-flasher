@@ -161,6 +161,16 @@ def build_command(fl, action, params, loader):
             raise ValueError("choose a folder for the backup")
         return script_cmd(fl, fl.RECOVERY / "usb_backup.py", ["--out", out, "--loader", loader] + ([] if params.get("twice", True) else ["--no-verify"])
                           + (["--chunk-mib", str(int(params["chunk"]))] if params.get("chunk") else []))
+    if action == "build":
+        import wizard
+        key, kmods = str(params.get("key") or ""), str(params.get("kmods") or "")
+        if problem := wizard.backup_problem(str(params.get("backup") or "")):
+            raise ValueError(problem)
+        if not Path(key).is_file():
+            raise ValueError("choose the SSH public key that goes into the image")
+        if not Path(kmods).is_dir():
+            raise ValueError("choose the folder with the built kernel modules")
+        return action_cmd(fl, action)
     if action in WRITE_ACTIONS and params.get("accept") is not True:
         raise ValueError("accept the risk first: this writes the board")
     if action in WIZARD_ACTIONS + WRITE_ACTIONS:
@@ -194,6 +204,8 @@ class App:
                 self.config().set("loader", loader)
             argv = build_command(self.fl, action, params, loader)
             env = {"X28_RECOVERY": str(self.fl.RECOVERY)}
+            if action == "build":
+                env["X28_BUILD"] = json.dumps({k: str(params[k]) for k in ("backup", "key", "kmods")})
             if self.uart and self.uart["cap"].is_alive():
                 env["X28_UART_LOG"] = str(self.uart["path"])
             def on_line(line):
@@ -235,6 +247,19 @@ class App:
             f.seek(max(0, f.tell() - size))
             return f.read().decode(errors="replace")
 
+    def build_inputs(self):
+        """What the Build form offers: finished backups near the usual places, the user's public keys, the kernel-modules folder."""
+        import wizard
+        from common import PRIVATE
+        roots = {Path(self.fl.default_backup_dir()), Path(self.config().get("backup") or ".")}
+        found = []
+        for root in list(roots):
+            found += [root, *(d for d in root.glob("*") if d.is_dir())] if root.is_dir() else []
+        backups = sorted({str(d) for d in found if wizard.backup_problem(d) is None})
+        kmods = PRIVATE / "kmods"
+        return {"backups": backups, "keys": sorted(str(p) for p in (Path.home() / ".ssh").glob("*.pub")),
+                "kmods": str(kmods) if kmods.is_dir() else "", "docker": bool(shutil.which("docker"))}
+
     def state(self):
         from common import DEFAULT_BACKUP, PRIVATE
         import wizard
@@ -252,7 +277,7 @@ class App:
                  "python": bool(fl.FROZEN or find_python()), "brew": bool(find_brew()), "mac": sys.platform == "darwin"}
         return {"frozen": fl.FROZEN, "setup": setup, "ports": ports, "loader": {"path": loader, "ok": Path(loader).is_file()},
                 "backup_out": str(fl.default_backup_dir()), "backup_dir": self.config().get("backup") or str(DEFAULT_BACKUP),
-                "images": images, "info": self.info, "uart": self.uart_status(),
+                "images": images, "info": self.info, "build": self.build_inputs(), "uart": self.uart_status(),
                 "job": {"id": job.id, "kind": job.kind, "running": job.code is None} if job else None}
 
 
@@ -354,6 +379,9 @@ def make_handler(app):
                         raise ValueError("that file does not exist")
                     app.config().set("loader", str(data["path"]))
                     return self.reply(200, {"ok": True})
+                if path == ["api", "check_backup"]:
+                    import wizard
+                    return self.reply(200, {"problem": wizard.backup_problem(str(data.get("path") or ""))})
                 if path == ["api", "pick"]:
                     return self.reply(200, {"path": pick_path(data.get("kind"), str(data.get("prompt") or "Choose"))})
                 if path == ["api", "restart"]:  # after the install: run again inside the mtkclient venv, same port and token, so the page just reconnects

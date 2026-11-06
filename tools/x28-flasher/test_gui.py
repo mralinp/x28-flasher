@@ -64,6 +64,23 @@ class FakeFl:
 
 
 class CommandTests(unittest.TestCase):
+    def test_build_needs_a_finished_backup_a_key_and_kmods(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "bk/images").mkdir(parents=True)
+            (d / "key.pub").write_text("ssh-ed25519 AAAA")
+            (d / "km").mkdir()
+            params = {"backup": str(d / "bk"), "key": str(d / "key.pub"), "kmods": str(d / "km")}
+            with self.assertRaisesRegex(ValueError, "ARCHIVE.sha256"):  # not finished
+                gui.build_command(FakeFl, "build", params, "DA")
+            (d / "bk/ARCHIVE.sha256").write_text("x  a.tar")
+            with self.assertRaisesRegex(ValueError, "rootfs_b"):
+                gui.build_command(FakeFl, "build", params, "DA")
+            (d / "bk/images/mtd10-rootfs_b.bin").write_bytes(b"")
+            with self.assertRaisesRegex(ValueError, "SSH public key"):
+                gui.build_command(FakeFl, "build", {**params, "key": ""}, "DA")
+            self.assertIn("build", gui.build_command(FakeFl, "build", params, "DA"))
+
     def test_backup_needs_a_folder_and_maps_verify(self):
         with self.assertRaises(ValueError):
             gui.build_command(FakeFl, "backup", {}, "DA")
@@ -74,7 +91,7 @@ class CommandTests(unittest.TestCase):
         for bad in ("flash;rm", "restore", None):
             with self.assertRaises(ValueError):
                 gui.build_command(FakeFl, bad, {"accept": True}, "DA")
-        self.assertEqual(gui.build_command(FakeFl, "build", {}, "DA")[-2:], ["run", "build"])
+        self.assertEqual(gui.build_command(FakeFl, "test", {}, "DA")[-2:], ["run", "test"])
 
     def test_writes_need_the_risk_accepted(self):
         for action in gui.WRITE_ACTIONS:

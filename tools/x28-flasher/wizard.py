@@ -200,6 +200,23 @@ def backup(fl, ui, cfg):
     return code
 
 
+def backup_problem(path, check_hash=False):
+    """Why a folder is not a usable backup, or None. Build needs a finished one: its ARCHIVE.sha256 and the rootfs_b image.
+    check_hash also re-reads the archive (seconds); the cheap check only looks for the files."""
+    from common import sha256_file
+    path = Path(path)
+    sums = path / "ARCHIVE.sha256"
+    if not sums.is_file():
+        return "no finished backup here (ARCHIVE.sha256 is missing); run Backup to the end first"
+    if not next(iter(path.glob("images/*-rootfs_b.bin")), None):
+        return "the backup has no rootfs_b image"
+    if check_hash:
+        want, _, name = sums.read_text().strip().partition("  ")
+        if not (path / name).is_file() or sha256_file(path / name) != want:
+            return "the backup archive does not match its checksum; take the backup again"
+    return None
+
+
 def build(fl, ui, cfg):
     """A flashable image assembled here from the newest GitHub release inputs and the user's backup; lands in private/build/native-ubi-*,
     where Flash looks. (A prebuilt, flashable release image is not offered yet: images.download is kept for that.)"""
@@ -208,7 +225,8 @@ def build(fl, ui, cfg):
         print("  " + warn("Build needs a source checkout (tools/build and Docker); this packaged app cannot build yet."))
         return 1
     try:
-        return build_local(fl, ui, cfg, PRIVATE / "build")
+        given = json.loads(os.environ["X28_BUILD"]) if os.environ.get("X28_BUILD") else None  # the page's form: nothing is asked here
+        return build_local(fl, ui, cfg, PRIVATE / "build", given)
     except (RuntimeError, ValueError, OSError) as err:
         print("  " + bad(str(err)))
         return 1
@@ -228,7 +246,7 @@ def choose_key(ui, cfg):
     return key
 
 
-def build_local(fl, ui, cfg, dest):
+def build_local(fl, ui, cfg, dest, given=None):
     import images
     import shutil
     import subprocess
@@ -236,7 +254,11 @@ def build_local(fl, ui, cfg, dest):
     if not shutil.which("docker") or subprocess.call(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL):
         print("  " + bad("Docker is not installed or not running: extracting the stock rootfs and packaging the image run in a container."))
         return 1
-    backup = Path(ask_path(ui, cfg, "backup", "Folder with your verified backup", DEFAULT_BACKUP, True))
+    backup = Path(given["backup"] if given else ask_path(ui, cfg, "backup", "Folder with your verified backup", DEFAULT_BACKUP, True))
+    problem = backup_problem(backup, check_hash=True)
+    if problem:
+        print("  " + bad(problem))
+        return 1
     rootfs_b = next(iter(sorted(backup.glob("images/*-rootfs_b.bin"))), None)
     if not rootfs_b:
         print("  " + bad(f"no rootfs_b image in {backup}/images"))
@@ -258,12 +280,12 @@ def build_local(fl, ui, cfg, dest):
         print("  " + bad(str(err)))
         return 1
     inputs["stock"] = str(stock)
-    inputs["key"] = choose_key(ui, cfg)
-    inputs["kmods"] = ask_path(ui, cfg, "build_kmods", "Folder with the built kernel modules (private SDK build)", PRIVATE / "kmods", True)
+    inputs["key"] = given["key"] if given else choose_key(ui, cfg)
+    inputs["kmods"] = given["kmods"] if given else ask_path(ui, cfg, "build_kmods", "Folder with the built kernel modules (private SDK build)", PRIVATE / "kmods", True)
     work = dest / f"local-{images.stamp()}"
     out = dest / f"native-ubi-local-{images.stamp()}"
     print("  " + paint("Writes only under private/build. Nothing touches the router.", "dim"))
-    if not ui.confirm(f"Build the image in {work.name} now? (several minutes)", True):
+    if not given and not ui.confirm(f"Build the image in {work.name} now? (several minutes)", True):
         return 0
     work.mkdir(parents=True)
     for cmd in images.local_commands(inputs, work, out, REPO):

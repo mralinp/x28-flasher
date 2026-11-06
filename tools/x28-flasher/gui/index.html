@@ -122,7 +122,7 @@ const busy = () => !!(S.job && S.job.code === null);
 /* The screen that shows a running job: the job's own view (Connect is "wizard"; Setup output sits on the home screen). */
 const jobScreen = (kind) => kind === "identify" ? "wizard" : kind === "setup" || kind === "libusb" ? "home" : kind;
 /* Actions that start something: refused while a job runs (the server holds one job at a time). */
-const STARTS = ["connect", "backup", "run", "write", "confirm-write", "setup", "libusb", "pw-next"];  // UART is not a job: it runs alongside one
+const STARTS = ["connect", "backup", "run", "write", "confirm-write", "setup", "libusb", "pw-next", "build"];  // UART is not a job: it runs alongside one
 
 /* ---------- sidebar ---------- */
 function mb(n) { return n ? Math.round(n / 1048576) + " MiB" : "?"; }
@@ -326,6 +326,19 @@ function wizardRunner(title, sub, action, label, extra = "") {
   <div><button class="primary" data-act="run" data-run="${action}" ${busy() ? "disabled" : ""}>${label}</button></div>
   ${S.job && S.job.kind === action ? consoleHtml() : ""}`;
 }
+function viewBuild() {
+  const st = S.st, b = st.build, sel = (id, items, empty) => items.length ? `<select id="${id}">${items.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}</select>` : `<input type="text" id="${id}" placeholder="${empty}">`;
+  const blocked = st.frozen ? "This packaged app cannot build yet: it needs the build scripts and Docker, which run from a source checkout." : !b.docker ? "Docker is not installed. Install and start Docker Desktop, then reload." : !b.backups.length ? "Build needs a finished backup. Run Backup to the end first, or choose a backup folder below." : "";
+  return `${head("Build image", "Downloads the newest userspace release from GitHub (each file checked against its SHA-256) and assembles the firmware image from your backup. Writes only under private/build; nothing touches the modem.")}
+  <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
+    <label class="f"><span class="lbl">Backup to build from</span><span style="display:flex;gap:8px">${sel("bd-backup", b.backups, "Folder of a finished backup")}<button type="button" class="btn" data-act="browse" data-target="bd-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
+    <label class="f"><span class="lbl">SSH public key that goes into the image (the only key that can log in)</span><span style="display:flex;gap:8px">${sel("bd-key", b.keys, "Path of a .pub file")}<button type="button" class="btn" data-act="browse" data-target="bd-key" data-kind="file" style="flex:none;height:40px">Browse…</button></span></label>
+    <label class="f"><span class="lbl">Kernel modules folder</span><span style="display:flex;gap:8px"><input type="text" id="bd-kmods" value="${esc(b.kmods)}"><button type="button" class="btn" data-act="browse" data-target="bd-kmods" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
+    ${blocked ? `<div class="warn">${esc(blocked)}</div>` : ""}
+    <div><button class="primary" id="bd-go" data-act="build" ${busy() || (st.frozen || !b.docker || !b.backups.length) ? "disabled" : ""}>Build image</button></div>
+  </div>
+  ${S.job && S.job.kind === "build" ? consoleHtml() : ""}`;
+}
 const WRITES = ["flash", "access", "rescue"];
 const RISK = {
   flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit", "I will keep the modem powered and the USB cable connected until it finishes"]],
@@ -381,7 +394,7 @@ function viewWizard() { return S.pw ? powerWizard() : `${head("Connect device", 
 function drawView() {
   const v = { home: viewHome, wizard: viewWizard, backup: viewBackup, uart: viewUart,
     flash: () => viewWrite("flash"), access: () => viewWrite("access"), rescue: () => viewWrite("rescue"),
-    build: () => wizardRunner("Build image", "Downloads the newest userspace release from GitHub (each file checked against its SHA-256) and assembles the firmware image from your backup. Needs Docker. Flash still asks for the image hash.", "build", "Build image"),
+    build: viewBuild,
     read: () => wizardRunner("Read & verify", "Reads one partition by name and compares it with your backup. Read-only.", "read", "Read a partition"),
     test: () => wizardRunner("Self-test", "Serial ports, backup, download agent and the patched library. Optionally reads lk_b and compares it. Read-only.", "test", "Run self-test") }[S.screen];
   const away = busy() && S.screen !== jobScreen(S.job.kind);
@@ -421,13 +434,28 @@ document.addEventListener("click", async (e) => {
       const { path } = await api("/api/pick", { kind, prompt: kind === "file" ? "Choose the download agent (DA_BR.bin)" : "Choose a folder" });
       if (!path) return;
       if (a === "loader") { await api("/api/loader", { path }); await refresh(); return drawView(); }
-      $("#" + t.dataset.target).value = path;
+      const el = $("#" + t.dataset.target);
+      if (el.tagName === "SELECT" && ![...el.options].some((o) => o.value === path)) el.add(new Option(path, path));
+      el.value = path;
+      if (t.dataset.target === "bd-backup") {  // a chosen folder must be a finished backup before Build is allowed
+        const { problem } = await api("/api/check_backup", { path });
+        if (problem) alert(problem);
+        if ($("#bd-go")) $("#bd-go").disabled = !!problem || busy() || S.st.frozen || !S.st.build.docker;
+      }
     } catch (er) { alert(er.message); }
     return;
   }
   if (a === "pw-next") return pwNext();
   if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
   if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader")?.value, twice: $("#bk-twice").checked });
+  if (a === "build") {
+    const params = { backup: $("#bd-backup").value, key: $("#bd-key").value, kmods: $("#bd-kmods").value };
+    try {
+      const { problem } = await api("/api/check_backup", { path: params.backup });
+      if (problem) return alert(problem);
+    } catch (er) { return alert(er.message); }
+    S.job = null; if (await start("build", params)) drawView(); return;
+  }
   if (a === "run") { S.job = null; if (await start(t.dataset.run)) drawView(); return; }
   if (a === "write") {
     $("#risk")?.close();  // the dialog is the user's accept; the server refuses without accept: true too
