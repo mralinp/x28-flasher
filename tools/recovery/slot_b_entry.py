@@ -92,7 +92,7 @@ def main():
     for flag, mode, verified in wanted:
         load_prior(getattr(args, flag), {**identity}, spec, mode, verified)
     print(f'{args.mode}: rootfs_b overlay tail only at {spec.addr:#x}, {spec.size:#x} bytes; candidate {spec.candidate_sha[:12]}; no reboot or retry')
-    print('the unit\'s saved settings are replaced by a fresh overlay (rc.local hook + your key)')
+    print('the overlay is rebuilt from the unit\'s own files plus the SSH hook and your key; overlayfs whiteouts and xattrs are not carried over')
     if not args.write:
         print('OFFLINE DRY RUN: no hardware import, USB command or write; execution gates not checked')
         return
