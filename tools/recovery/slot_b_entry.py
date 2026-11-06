@@ -65,6 +65,17 @@ def load_inputs(backup, loader, mode, candidate_dir):
     return by_name, original, candidate, spec, identity
 
 
+def check_chip(run, backup):
+    """proinfo is identical on both owner units, so also require this connection's hwcode and meid to equal the backup's.
+    mtkclient writes hwparam.json into the working directory (the run folder) when it connects; a missing file stops the session."""
+    live, saved = run / 'hwparam.json', backup / 'hwparam.json'
+    if not live.is_file() or not saved.is_file():
+        raise ValueError('hwparam.json missing: cannot bind this connection to the backed-up unit')
+    want, got = json.loads(saved.read_text()), json.loads(live.read_text())
+    if not want.get('meid') or (str(want.get('hwcode')).lower(), str(want['meid']).lower()) != (str(got.get('hwcode')).lower(), str(got.get('meid')).lower()):
+        raise ValueError('this connection is not the unit the backup was taken from (meid/hwcode differ)')
+
+
 def phrase(spec, mode, same_disk, no_uart):
     image = spec.candidate_sha if mode == 'write' else spec.original_sha
     return f'WRITE {mode} {spec.name} {image[:12]} NO-SSH' + (' NO-UART' if no_uart else '') + (' SAME-DISK' if same_disk else '')
@@ -89,8 +100,7 @@ def main():
             raise ValueError(f'--{flag.replace("_", "-")} is {"required" if flag in [w[0] for w in wanted] else "not valid"} for {args.mode}')
     backup, loader = args.backup.resolve(strict=True), args.loader.resolve(strict=True)
     parts, original, candidate, spec, identity = load_inputs(backup, loader, args.mode, args.candidate_dir.resolve(strict=True))
-    for flag, mode, verified in wanted:
-        load_prior(getattr(args, flag), {**identity}, spec, mode, verified)
+    priors = {flag: load_prior(getattr(args, flag), {**identity}, spec, mode, verified) for flag, mode, verified in wanted}
     print(f'{args.mode}: rootfs_b overlay tail only at {spec.addr:#x}, {spec.size:#x} bytes; candidate {spec.candidate_sha[:12]}; no reboot or retry')
     print('the overlay is rebuilt from the unit\'s own files plus the SSH hook and your key; overlayfs whiteouts and xattrs are not carried over')
     if not args.write:
@@ -139,12 +149,13 @@ def main():
         if uart:
             check_uart(uart)
         check_unit(mtk.daloader, parts['proinfo'], run)
+        check_chip(run, backup)
         xml_module = sys.modules.get('mtkclient.Library.DA.xmlflash.xml_lib')
         if xml_module is None or sha256_file(Path(xml_module.__file__)) != identity['host']:
             raise ValueError('loaded XML implementation differs from verified host')
         if args.resume:
             claim_restore(args.resume.resolve(), run)
-            prior = load_prior(args.resume, {**identity}, spec, 'write', False)
+            prior = priors['resume']  # loaded before the claim: load_prior refuses a run that is already claimed
             prior['status'] = 'RESTORE_ATTEMPTED'
             save(args.resume.resolve(), prior)
         session.run_session(mtk.daloader, spec, original, candidate, run, mode=args.mode)

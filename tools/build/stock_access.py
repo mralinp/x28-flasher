@@ -7,7 +7,7 @@ The overlay is rebuilt from the unit's own overlay files and directories (mount 
 (device nodes) and trusted.overlay xattrs, which the extractor cannot read; the backup is the way back. Output is
 NOT-FLASHABLE: only slot_b_entry.py writes it, with the owner's typed phrase.
 
-Run in the tools container (needs mkfs.ubifs and ubireader), inputs read-only, no network:
+Run as root in the tools container (needs mkfs.ubifs and ubireader; -k keeps file modes), inputs read-only, no network:
     python3 stock_access.py --image mtd42-rootfs_b.bin --public-key router.pub --output DIR
 """
 import argparse
@@ -127,7 +127,7 @@ def main():
         (t / "sq").write_bytes(squashfs_payload(raw))
         subprocess.run(["unsquashfs", "-n", "-d", str(t / "base"), str(t / "sq"), "etc/rc.local"], check=True, stdout=subprocess.DEVNULL)
         (t / "old.ubifs").write_bytes(volume_payload(raw, ROOTFS_DATA))
-        subprocess.run(["ubireader_extract_files", "-o", str(t / "old"), str(t / "old.ubifs")], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["ubireader_extract_files", "-k", "-o", str(t / "old"), str(t / "old.ubifs")], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         tree = t / "old"
         assert (tree / "upper").is_dir(), "unexpected overlay layout"
         (tree / "work").mkdir(exist_ok=True)
@@ -152,7 +152,8 @@ def main():
               "changed_pebs": changed, "untouched_pebs": len(kept), "overlay_entries": len(listing),
               "overlay": "the unit's own overlay files and directories plus the SSH pieces (whiteouts and trusted.overlay xattrs not carried over)",
               "ssh": "stock msn dropbear -s -p 2222 from /etc/x28-ssh.sh (background, host key made on the unit), key only",
-              "public_key_sha256": hashlib.sha256(key.encode()).hexdigest()}
+              "public_key_sha256": hashlib.sha256(key.encode()).hexdigest(),
+              "mkfs_ubifs": subprocess.run(["mkfs.ubifs", "--version"], capture_output=True, text=True).stdout.strip()}
     (args.output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     (args.output / "overlay-tree.txt").write_text("\n".join(sorted(listing)) + "\n")
     (args.output / "NOT-FLASHABLE").write_text("Written only by slot_b_entry.py with the owner's typed phrase; see x28-flasher#5.\n")

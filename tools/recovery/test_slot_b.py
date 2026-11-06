@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 import slot_b as b
+import slot_b_entry as e
 import slot_session as s
 from stock_access import PEB, ec_header, vid_header
 
@@ -50,6 +54,26 @@ class TailTests(unittest.TestCase):
     def test_same_candidate_hash_is_refused(self):
         with self.assertRaises(ValueError):
             b.rootfs_b_tail_spec('1' * 64, '1' * 64, 'a' * 64, PINS)
+
+
+class ChipTests(unittest.TestCase):
+    def dirs(self, saved, live):
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(lambda: __import__('shutil').rmtree(root))
+        (root / 'backup').mkdir(), (root / 'run').mkdir()
+        (root / 'backup/hwparam.json').write_text(json.dumps(saved))
+        if live is not None:
+            (root / 'run/hwparam.json').write_text(json.dumps(live))
+        return root / 'run', root / 'backup'
+
+    def test_same_unit_passes_case_insensitively(self):
+        e.check_chip(*self.dirs({'hwcode': '0x992', 'meid': 'AB12'}, {'hwcode': '0x992', 'meid': 'ab12'}))
+
+    def test_other_unit_missing_or_empty_meid_stops(self):
+        for saved, live in (({'hwcode': '0x992', 'meid': 'ab12'}, {'hwcode': '0x992', 'meid': 'cd34'}),
+                            ({'hwcode': '0x992', 'meid': 'ab12'}, None), ({'hwcode': '0x992'}, {'hwcode': '0x992'})):
+            with self.assertRaises(ValueError):
+                e.check_chip(*self.dirs(saved, live))
 
 
 if __name__ == '__main__':
