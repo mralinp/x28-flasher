@@ -299,8 +299,9 @@ function viewBackup() {
   return `${head("Backup", "Reads every partition twice and keeps it only if both reads agree. Nothing is written to the board. The same folder resumes an unfinished backup.")}
   <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
     <label class="f"><span class="lbl">Save the backup in</span><span style="display:flex;gap:8px"><input type="text" id="bk-out" value="${esc(st.backup_out)}"><button type="button" class="btn" data-act="browse" data-target="bk-out" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
-    <label class="f"><span class="lbl">Vendor download agent (DA_BR.bin)</span><span style="display:flex;gap:8px"><input type="text" id="bk-loader" value="${esc(st.loader.path)}"><button type="button" class="btn" data-act="browse" data-target="bk-loader" data-kind="file" style="flex:none;height:40px">Browse…</button></span></label>
-    ${st.loader.ok ? "" : `<div class="warn">That file does not exist yet. The download agent is not shipped; choose your copy.</div>`}
+    ${st.loader.ok ? `<div class="mut">✓ Download agent for this chip (MT6890) is in place; nothing to choose.</div>`
+      : `<label class="f"><span class="lbl">Vendor download agent (DA_BR.bin)</span><span style="display:flex;gap:8px"><input type="text" id="bk-loader" value="${esc(st.loader.path)}"><button type="button" class="btn" data-act="browse" data-target="bk-loader" data-kind="file" style="flex:none;height:40px">Browse…</button></span></label>
+      <div class="warn">The download agent was not found. It is not shipped; choose your copy.</div>`}
     <label class="chk"><input class="sw" type="checkbox" id="bk-twice" checked><span>Read every partition twice (about twice as long, recommended)</span></label>
     <div><button class="primary" data-act="backup" ${busy() ? "disabled" : ""}>Start backup</button></div>
   </div>
@@ -409,7 +410,7 @@ document.addEventListener("click", async (e) => {
   }
   if (a === "pw-next") return pwNext();
   if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
-  if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader").value, twice: $("#bk-twice").checked });
+  if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader")?.value, twice: $("#bk-twice").checked });
   if (a === "run") { S.job = null; if (await start(t.dataset.run)) drawView(); return; }
   if (a === "write") {
     if (![...document.querySelectorAll(".risk")].every((c) => c.checked)) return;  // the server refuses without accept too
