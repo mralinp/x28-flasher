@@ -2,11 +2,12 @@
 """Offline: stock rootfs_b with key-only SSH, by replacing only the rootfs_data (overlay) volume (#5). Never touches a device.
 
 Every PEB that is not part of rootfs_data (the signed SquashFS volume and both layout copies) is copied byte for byte.
-The overlay is a FRESH minimal UBIFS holding /etc/rc.local (the image's own, plus one dropbear line) and the public key:
-the unit's saved settings, overlayfs whiteouts and xattrs are NOT carried over. Output is NOT-FLASHABLE: no guarded
-write session exists for rootfs_b yet.
+The overlay is rebuilt from the unit's own overlay files and directories (mount points, config, ownership) plus
+/etc/x28-ssh.sh, one hook line in /etc/rc.local and the public key. NOT carried over: the few overlayfs whiteouts
+(device nodes) and trusted.overlay xattrs, which the extractor cannot read; the backup is the way back. Output is
+NOT-FLASHABLE: only slot_b_entry.py writes it, with the owner's typed phrase.
 
-Run in the tools container (needs mkfs.ubifs), inputs read-only, no network:
+Run in the tools container (needs mkfs.ubifs and ubireader), inputs read-only, no network:
     python3 stock_access.py --image mtd42-rootfs_b.bin --public-key router.pub --output DIR
 """
 import argparse
@@ -20,12 +21,16 @@ import zlib
 from pathlib import Path
 
 PEB, MIN_IO, ROOTFS_DATA, LAYOUT = 0x40000, 4096, 1, 0x7fffefff
-HOOK = """
-# x28 stock access (x28-flasher#5): key-only SSH on 2222, the stock dropbear stays off
-if [ -s /etc/dropbear/authorized_keys ]; then
-    /usr/sbin/dropbear -s -p 2222 -P /var/run/x28-ssh.pid
-fi
+# Runs in the background from the top of rc.local, so nothing before it can hold SSH back. The host key is made on the unit.
+SSH_SCRIPT = """#!/bin/sh
+# x28 stock access (x28-flasher#5): key-only SSH on port 2222 via the stock multi-call binary
+K=/etc/dropbear/authorized_keys
+H=/etc/dropbear/dropbear_rsa_host_key
+[ -s "$K" ] || exit 0
+[ -s "$H" ] || { rm -f "$H"; /usr/sbin/msn dropbearkey -t rsa -s 2048 -f "$H" >/dev/null 2>&1; }  # stock ships an empty file; dropbearkey will not overwrite
+exec /usr/sbin/msn dropbear -r "$H" -s -p 2222 -P /var/run/x28-ssh.pid
 """
+HOOK = "\n# x28 stock access (x28-flasher#5)\n[ -f /etc/x28-ssh.sh ] && sh /etc/x28-ssh.sh &\n"
 
 
 def crc(data):
@@ -70,7 +75,7 @@ def splice(raw, ubifs, leb):
     assert slots, "no rootfs_data volume"
     lebs = [ubifs[i:i + leb].ljust(leb, b"\xff") for i in range(0, len(ubifs), leb)]
     lebs = [(n, d) for n, d in enumerate(lebs) if d != b"\xff" * leb]
-    assert len(lebs) <= len(slots), "new overlay needs more blocks than the volume had"
+    assert len(lebs) <= len(slots), f"new overlay needs {len(lebs)} blocks, the volume had {len(slots)} mapped"
     top = max(p[4] for p in pebs if p[4] is not None)
     out = bytearray(raw)
     for k, (i, ecf, *_rest) in enumerate(slots):
@@ -86,12 +91,17 @@ def splice(raw, ubifs, leb):
     return bytes(out), [p[0] for p in slots]
 
 
-def squashfs_payload(raw):
+def volume_payload(raw, volume):
     blocks = {}
     for i, ecf, vol, lnum, _ in parse(raw):
-        if vol == 0:
+        if vol == volume:
             blocks[lnum] = raw[i * PEB + ecf[2]:(i + 1) * PEB]
-    sq = b"".join(blocks[n] for n in sorted(blocks))
+    size = PEB - next(p[1][2] for p in parse(raw) if p[2] == volume)
+    return b"".join(blocks.get(n, b"\xff" * size) for n in range(max(blocks) + 1))  # unmapped LEBs read as erased
+
+
+def squashfs_payload(raw):
+    sq = volume_payload(raw, 0)
     assert sq[:4] == b"hsqs", "rootfs is not SquashFS"
     return sq[:struct.unpack_from("<Q", sq, 40)[0]]
 
@@ -116,27 +126,36 @@ def main():
         t = Path(t)
         (t / "sq").write_bytes(squashfs_payload(raw))
         subprocess.run(["unsquashfs", "-n", "-d", str(t / "base"), str(t / "sq"), "etc/rc.local"], check=True, stdout=subprocess.DEVNULL)
-        rc = (t / "base/etc/rc.local").read_text()
-        assert rc.rstrip().endswith("exit 0"), "unexpected stock rc.local"
-        head = rc.rstrip()[:-len("exit 0")].rstrip("\n")
-        tree = t / "tree"
-        (tree / "upper/etc/dropbear").mkdir(parents=True)
-        (tree / "work").mkdir()
-        (tree / "upper/etc/rc.local").write_text(head + "\n" + HOOK + "\nexit 0\n")
-        (tree / "upper/etc/rc.local").chmod(0o755)
+        (t / "old.ubifs").write_bytes(volume_payload(raw, ROOTFS_DATA))
+        subprocess.run(["ubireader_extract_files", "-o", str(t / "old"), str(t / "old.ubifs")], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        tree = t / "old"
+        assert (tree / "upper").is_dir(), "unexpected overlay layout"
+        (tree / "work").mkdir(exist_ok=True)
+        rc_path = tree / "upper/etc/rc.local"
+        rc = rc_path.read_text() if rc_path.exists() else (t / "base/etc/rc.local").read_text()
+        assert rc.rstrip().endswith("exit 0") and "x28-ssh" not in rc, "unexpected rc.local"
+        (tree / "upper/etc/dropbear").mkdir(parents=True, exist_ok=True)
+        rc_path.write_text(HOOK + rc)
+        rc_path.chmod(0o755)
+        (tree / "upper/etc/x28-ssh.sh").write_text(SSH_SCRIPT)
+        (tree / "upper/etc/x28-ssh.sh").chmod(0o755)
         (tree / "upper/etc/dropbear/authorized_keys").write_text(key + "\n")
         (tree / "upper/etc/dropbear/authorized_keys").chmod(0o600)
-        subprocess.run(["mkfs.ubifs", "-r", str(tree), "-m", str(MIN_IO), "-e", str(leb), "-c", str(reserved), "-F", "-o", str(t / "overlay.ubifs")], check=True)
+        subprocess.run(["mkfs.ubifs", "-r", str(tree), "-m", str(MIN_IO), "-e", str(leb), "-c", str(reserved), "-F", "-U", "-o", str(t / "overlay.ubifs")], check=True)
         new, changed = splice(raw, (t / "overlay.ubifs").read_bytes(), leb)
+        listing = subprocess.run(["find", str(tree), "-mindepth", "1"], capture_output=True, text=True).stdout.replace(str(tree), "").splitlines()
     args.output.mkdir(parents=True)
     (args.output / "rootfs_b-access.bin").write_bytes(new)
     kept = [i for i in range(len(raw) // PEB) if i not in changed]
     assert all(new[i * PEB:(i + 1) * PEB] == raw[i * PEB:(i + 1) * PEB] for i in kept)
     report = {"source_sha256": hashlib.sha256(raw).hexdigest(), "output_sha256": hashlib.sha256(new).hexdigest(),
-              "changed_pebs": changed, "untouched_pebs": len(kept), "overlay": "fresh minimal UBIFS (settings, whiteouts, xattrs not carried over)",
-              "ssh": "dropbear -s -p 2222 from /etc/rc.local, key only", "public_key_sha256": hashlib.sha256(key.encode()).hexdigest()}
+              "changed_pebs": changed, "untouched_pebs": len(kept), "overlay_entries": len(listing),
+              "overlay": "the unit's own overlay files and directories plus the SSH pieces (whiteouts and trusted.overlay xattrs not carried over)",
+              "ssh": "stock msn dropbear -s -p 2222 from /etc/x28-ssh.sh (background, host key made on the unit), key only",
+              "public_key_sha256": hashlib.sha256(key.encode()).hexdigest()}
     (args.output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
-    (args.output / "NOT-FLASHABLE").write_text("No guarded write session exists for rootfs_b; see x28-flasher#5.\n")
+    (args.output / "overlay-tree.txt").write_text("\n".join(sorted(listing)) + "\n")
+    (args.output / "NOT-FLASHABLE").write_text("Written only by slot_b_entry.py with the owner's typed phrase; see x28-flasher#5.\n")
     print(json.dumps(report, indent=2))
 
 
