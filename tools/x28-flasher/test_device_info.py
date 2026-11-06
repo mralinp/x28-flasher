@@ -29,6 +29,13 @@ class IdentityTests(unittest.TestCase):
         data = page(b"A12345678901234567") + page(b"A12345678901234567")
         self.assertEqual(device_info.identity_values(data), [{"kind": "serial", "value": "A12345678901234567"}])
 
+    def test_state_file_gives_flash_and_security_flags(self):
+        import json, tempfile
+        d = Path(tempfile.mkdtemp())
+        (d / ".state").write_text(json.dumps({"flashtype": "nand", "flashsize": 1072693248, "flashmode": "XML", "target_config": {"sbc": False}}))
+        self.assertEqual(device_info.read_state(d)["flashtype"], "nand")
+        self.assertEqual(device_info.read_state(d / "none"), {})
+
     def test_erased_and_key_pages_give_nothing(self):
         self.assertEqual(device_info.identity_values(b"\xff" * 0x3000 + page(b"imei", b"\x00" * 10)), [])
 
