@@ -73,9 +73,16 @@ jobs:
           tar -C dist -czf "x28-flasher-${{ matrix.name }}.tar.gz" x28-flasher
           if command -v sha256sum >/dev/null; then sha256sum "x28-flasher-${{ matrix.name }}.tar.gz"; else shasum -a 256 "x28-flasher-${{ matrix.name }}.tar.gz"; fi | tee "x28-flasher-${{ matrix.name }}.tar.gz.sha256"
 
+      - name: Mac app (packaged, read-only)
+        if: runner.os == 'macOS'
+        run: |
+          python3 tools/x28-flasher/build_app.py
+          ditto -c -k --keepParent "dist/X28 Flasher.app" X28-Flasher-macos.zip
+
       - uses: actions/upload-artifact@v4
         with:
           name: x28-flasher-${{ matrix.name }}
           path: |
             x28-flasher-${{ matrix.name }}.tar.gz
             x28-flasher-${{ matrix.name }}.tar.gz.sha256
+            X28-Flasher-macos.zip

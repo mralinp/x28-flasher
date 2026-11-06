@@ -7,3 +7,4 @@ dist/
 *.bin
 *.img
 overlay/
+build-x28-flasher/

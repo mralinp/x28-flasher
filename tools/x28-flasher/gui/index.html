@@ -232,17 +232,17 @@ function head(t, s) { return `<div><h1>${t}</h1><p class="lead">${s}</p></div>`;
 
 function setupPanel() {
   const st = S.st, s = st.setup;
-  if (st.frozen || !s) return "";
-  const ready = s.mtkclient && s.libusb && !s.restart && st.loader.ok;
+  if (!s) return "";
+  const ready = (st.frozen || (s.mtkclient && s.libusb && !s.restart)) && st.loader.ok;  // the packaged app already holds everything but the download agent
   const row = (ok, label, action) => `<div style="display:flex;align-items:center;gap:12px;min-height:34px"><span style="color:${ok ? "var(--ok)" : "var(--warn)"}">${ok ? "✓" : "○"}</span><span style="flex:1">${label}</span>${action || ""}</div>`;
   const btn = (act, text, dis) => `<button class="btn" data-act="${act}" ${dis || busy() ? "disabled" : ""}>${text}</button>`;
   const show = S.job && (S.job.kind === "setup" || S.job.kind === "libusb");
   if (ready && !show) return "";
   return `<div class="box" style="padding:18px;display:grid;gap:6px;max-width:760px"><b>Setup</b>
-    ${row(s.python, s.python ? "Python 3.10 or newer" : "Python 3.10 or newer is missing. Install it from python.org, then restart this page.")}
+    ${st.frozen ? "" : `${row(s.python, s.python ? "Python 3.10 or newer" : "Python 3.10 or newer is missing. Install it from python.org, then restart this page.")}
     ${row(s.libusb, "libusb (talks to the modem over USB)", s.libusb ? "" : (s.brew ? btn("libusb", "Install") : '<span class="mut">needs Homebrew: brew.sh</span>'))}
     ${row(s.mtkclient, "mtkclient, pinned and patched for the X28", s.mtkclient ? "" : btn("setup", "Install", !s.python || !s.libusb))}
-    ${s.restart ? row(false, "Installed. Restart the page to use it.", btn("restart", "Restart now")) : ""}
+    ${s.restart ? row(false, "Installed. Restart the page to use it.", btn("restart", "Restart now")) : ""}`}
     ${row(st.loader.ok, st.loader.ok ? `Download agent: <span class="mono mut">${esc(st.loader.path)}</span>` : "Download agent file (DA_BR.bin): not found. It is not shipped with the tool.", btn("loader", st.loader.ok ? "Change…" : "Choose file…"))}
     ${show ? consoleHtml() : ""}</div>`;
 }
