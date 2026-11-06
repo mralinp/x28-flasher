@@ -18,7 +18,7 @@ Licence: GPL-2.0-only.
 
 ## Using it
 
-Open `X28 Flasher.app` (double-click it in Finder). It starts the flasher in the background and shows the page in your browser; opening it again just shows the same page, and the page's **Quit** button stops it. Log: `~/Library/Logs/x28-flasher.log`.
+Open `X28 Flasher.app` (double-click it in Finder). The packaged app is a native window (a small Swift WKWebView, built by `build_app.py` when `swiftc` is available) around the page; closing the window quits it. The app from the checkout starts the flasher in the background and shows the page in your browser; the page's **Quit** button stops it. Log: `~/Library/Logs/x28-flasher.log`.
 
 Two flavours of the app:
 

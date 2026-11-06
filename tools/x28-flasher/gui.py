@@ -390,6 +390,7 @@ def running_server():
 
 
 def serve(fl, open_browser=True, port=0):
+    open_browser = open_browser and not os.environ.get("X28_NO_BROWSER")  # the native window shows the page itself
     restarted = "X28_PORT" in os.environ  # started again by /api/restart: same address, and the open page reconnects by itself
     if not restarted and (other := running_server()):  # opened the app twice: just show the page that is already up
         url = f"http://127.0.0.1:{other['port']}/?t={other['token']}"
