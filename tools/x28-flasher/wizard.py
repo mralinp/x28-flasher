@@ -223,9 +223,6 @@ def build(fl, ui, cfg):
     image is not offered yet: images.download is kept for that.)"""
     import images
     from common import DEFAULT_BACKUP, PRIVATE
-    if fl.FROZEN:
-        print("  " + warn("Build needs a source checkout (tools/build and Docker); this packaged app cannot build yet."))
-        return 1
     try:
         given = json.loads(os.environ["X28_BUILD"]) if os.environ.get("X28_BUILD") else None
         if not given:
@@ -276,7 +273,7 @@ def build_local(fl, ui, cfg, dest, given):
     out = dest / f"native-ubi-local-{images.stamp()}"
     print("  " + paint("Writes only under private/build. Nothing touches the router.", "dim"))
     work.mkdir(parents=True)
-    for cmd in images.local_commands(inputs, work, out, REPO):
+    for cmd in images.local_commands(inputs, work, out, REPO, [sys.executable, "--run-script"] if fl.FROZEN else "python3"):
         print("  " + paint("$ " + " ".join(cmd[:3]) + " ...", "dim"))
         if subprocess.call(cmd, env={**os.environ, "X28_OVERLAY": inputs["overlay"]}) != 0:
             print("  " + bad(f"Build stopped at {cmd[0]} {cmd[1]}; nothing was flashed. Folder kept: {work}"))

@@ -260,6 +260,7 @@ def main():
     if sys.argv[1:2] == ["--run-script"]:  # how the page runs a tool when frozen: no second interpreter to call
         import runpy
         sys.argv = sys.argv[2:]
+        sys.path.insert(0, str(Path(sys.argv[0]).resolve().parent))  # like `python script.py`: siblings (ab_guard, stage_native) import
         try:
             runpy.run_path(sys.argv[0], run_name="__main__")
         except SystemExit as done:

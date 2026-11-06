@@ -84,6 +84,9 @@ def main():
     data += [(f, "recovery") for f in (TOOLS / "recovery").glob("*.py") if not f.name.startswith("test_")]
     data += [(TOOLS / "recovery" / "x28-mtd.txt", "recovery")]
     data += [(TOOLS / "build" / n, "build") for n in BUILD_FILES]
+    # Build runs these (and mounts tools/ into its container) under the layout REPO/tools/..., which common.REPO points at when frozen
+    data += [(TOOLS / "build" / n, "tools/build") for n in BUILD_FILES + ("first_boot.py", "stock_access.py")]
+    data += [(TOOLS / "firmware" / n, "tools/firmware") for n in ("Dockerfile", "inventory.py")]
     data += [(HERE / "gui" / "index.html", "gui"), (HERE / "device_info.py", "gui")]  # the page and the tool it runs
     if args.loader:
         from restore_entry import DA_HASH
@@ -96,7 +99,7 @@ def main():
            "--collect-data", "mtkclient", "--collect-binaries", "usb"]
     for pkg_name in ("mtkclient", "usb", "serial", "Crypto", "Cryptodome", "colorama", "questionary", "prompt_toolkit"):
         cmd += ["--collect-submodules", pkg_name]
-    for name in stdlib_imports([f for f, d in data if f.suffix == ".py" and d in ("recovery", "build")]):
+    for name in stdlib_imports([f for f, d in data if f.suffix == ".py" and d in ("recovery", "build", "tools/build", "tools/firmware")]):
         cmd += ["--hidden-import", name]
     for src, dest in data:
         cmd += ["--add-data", f"{src}{os.pathsep}{dest}"]

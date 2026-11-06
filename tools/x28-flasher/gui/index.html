@@ -329,13 +329,13 @@ function wizardRunner(title, sub, action, label, extra = "") {
 function viewBuild() {
   if (!S.releases && !S.relError) api("/api/releases", {}).then((r) => { S.releases = r.releases; if (S.screen === "build") drawView(); }, (e) => { S.relError = "Could not load the release list: " + e.message; if (S.screen === "build") drawView(); });
   const st = S.st, b = st.build, sel = (id, items, empty) => items.length ? `<select id="${id}">${items.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}</select>` : `<input type="text" id="${id}" placeholder="${empty}">`;
-  const blocked = st.frozen ? "This packaged app cannot build yet: it needs the build scripts and Docker, which run from a source checkout." : !b.docker ? "Docker is not installed. Install and start Docker Desktop, then reload." : !b.backups.length ? "Build needs a finished backup. Run Backup to the end first, or choose a backup folder below." : "";
+  const blocked = !b.docker ? "Docker is not installed. Install and start Docker Desktop, then reload." : !b.backups.length ? "Build needs a finished backup. Run Backup to the end first, or choose a backup folder below." : "";
   return `${head("Build image", "Downloads the newest userspace release from GitHub (each file checked against its SHA-256) and assembles the firmware image from your backup. Writes only under private/build; nothing touches the modem.")}
   <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
     <label class="f"><span class="lbl">Backup to build from</span><span style="display:flex;gap:8px">${sel("bd-backup", b.backups, "Folder of a finished backup")}<button type="button" class="btn" data-act="browse" data-target="bd-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
     <label class="f"><span class="lbl">Version to build</span>${S.releases ? `<select id="bd-tag">${S.releases.map((r, i) => `<option value="${esc(r.tag)}">${esc(r.tag)}  ·  ${esc(r.date)}${i === 0 ? "  ·  newest" : ""}</option>`).join("")}</select>` : `<span class="mut">${S.relError ? esc(S.relError) : "Loading the release list from GitHub…"}</span>`}</label>
     ${blocked ? `<div class="warn">${esc(blocked)}</div>` : ""}
-    <div><button class="primary" id="bd-go" data-act="build" ${busy() || (st.frozen || !b.docker || !b.backups.length) ? "disabled" : ""}>Build image</button></div>
+    <div><button class="primary" id="bd-go" data-act="build" ${busy() || (!b.docker || !b.backups.length) ? "disabled" : ""}>Build image</button></div>
   </div>
   ${S.job && S.job.kind === "build" ? consoleHtml() : ""}`;
 }
@@ -440,7 +440,7 @@ document.addEventListener("click", async (e) => {
       if (t.dataset.target === "bd-backup") {  // a chosen folder must be a finished backup before Build is allowed
         const { problem } = await api("/api/check_backup", { path });
         if (problem) alert(problem);
-        if ($("#bd-go")) $("#bd-go").disabled = !!problem || busy() || S.st.frozen || !S.st.build.docker;
+        if ($("#bd-go")) $("#bd-go").disabled = !!problem || busy() || !S.st.build.docker;
       }
     } catch (er) { alert(er.message); }
     return;

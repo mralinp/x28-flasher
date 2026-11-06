@@ -11,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[2]  # frozen: tools/build and tools/firmware are bundled under it
 # git-ignored: dumps, probe logs and chip IDs live here; a frozen binary has no repo, so it keeps them in the user's home
 PRIVATE = Path(os.environ["X28_PRIVATE"]) if "X28_PRIVATE" in os.environ else (
     Path.home() / "x28-flasher" if getattr(sys, "frozen", False) else REPO / "private")

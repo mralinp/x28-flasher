@@ -154,3 +154,13 @@ class ReleaseListTests(unittest.TestCase):
                 {"tag_name": "v1", "published_at": "2026-11-05T01:00:00Z", "assets": [{"name": "x28-userspace-v1-x-rootfs.tar.gz"}]}]
         got = images.releases(fetch=lambda url: json.dumps(rels).encode())
         self.assertEqual(got, [{"tag": "v2", "date": "2026-11-06"}, {"tag": "v1", "date": "2026-11-05"}])
+
+
+class FrozenBuildTests(unittest.TestCase):
+    def test_frozen_build_runs_the_scripts_with_the_binarys_own_interpreter_and_no_key_flag_without_a_key(self):
+        inputs = {"stock": "s", "modern": "m", "extra_ipks": ["a"], "feed": ["f"]}
+        cmds = images.local_commands(inputs, Path("/w"), Path("/o/img"), Path("/repo"), ["/app/x28-flasher", "--run-script"])
+        self.assertEqual(cmds[0][:3], ["/app/x28-flasher", "--run-script", "/repo/tools/build/stage_native.py"])
+        self.assertEqual(cmds[1][:3], ["/app/x28-flasher", "--run-script", "/repo/tools/build/first_boot.py"])
+        self.assertNotIn("--public-key", cmds[1])
+        self.assertNotIn("--kmods", cmds[1])

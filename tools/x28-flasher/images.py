@@ -149,13 +149,14 @@ def stock_access_command(rootfs_b, key, out_dir, repo):
             "x28-firmware-tools:ubi", "python3", "/opt/stock_access.py", "--image", "/in/rootfs_b.bin", "--public-key", "/in/router.pub", "--output", "/out"]
 
 
-def local_commands(inputs, work, out, repo, python="python3"):
+def local_commands(inputs, work, out, repo, python="python3"):  # python: a command, or a list when frozen (the binary's own --run-script)
     """The three build steps, in order. inputs: stock, modern (files), optional key, extra_ipks, feed (stage extras, feed ipks)."""
     stage, profile = work / "stage", work / "profile"
+    python = python if isinstance(python, list) else [python]
     return [
-        [python, str(repo / "tools/build/stage_native.py"), "--stock", inputs["stock"], "--modern", inputs["modern"],
+        [*python, str(repo / "tools/build/stage_native.py"), "--stock", inputs["stock"], "--modern", inputs["modern"],
          "--ipk", *inputs["extra_ipks"], "--output", str(stage)],
-        [python, str(repo / "tools/build/first_boot.py"), "--stage", str(stage), "--stock", inputs["stock"], "--output", str(profile),
+        [*python, str(repo / "tools/build/first_boot.py"), "--stage", str(stage), "--stock", inputs["stock"], "--output", str(profile),
          *(["--public-key", inputs["key"]] if inputs.get("key") else []),
          "--ipk", *inputs["feed"]],
         ["docker", "build", "-t", "x28-firmware-tools:ubi", "-f", str(repo / "tools/firmware/Dockerfile"), str(repo / "tools/firmware")],

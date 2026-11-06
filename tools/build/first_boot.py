@@ -538,7 +538,7 @@ config interface 'wan'
 def main():
     ap=argparse.ArgumentParser(description=__doc__);ap.add_argument('--stage',type=Path,required=True)
     ap.add_argument('--public-key',type=Path);ap.add_argument('--stock',type=Path,required=True);ap.add_argument('--output',type=Path,required=True)
-    ap.add_argument('--kmods',type=Path,required=True,help='the modules package/x28-kmods/build.sh built for this kernel: WireGuard, TPROXY, socket')
+    ap.add_argument('--kmods',type=Path,help='a folder of modules to add (WireGuard, TPROXY, socket); without it the userspace release must already carry them')
     ap.add_argument('--ipk',type=Path,nargs='+',required=True,help="the X28 feed's ipset, libipset13 and x28-ipset-kernel, which Passwall2 needs")
     args=ap.parse_args();print(json.dumps(integrate(args.stage,args.public_key.read_text() if args.public_key else None,args.stock,args.output,args.kmods,args.ipk),indent=2))
 
