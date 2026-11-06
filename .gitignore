@@ -6,3 +6,4 @@ bh/
 dist/
 *.bin
 *.img
+overlay/

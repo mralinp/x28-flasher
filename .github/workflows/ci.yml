@@ -23,8 +23,6 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: true
 
       - uses: actions/setup-python@v5
         with:
@@ -34,8 +32,16 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = macOS ]; then brew install libusb; else sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0; fi
 
+      - name: Firmware overlay (package files the assembly reads)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R mralinp/zlt-x28-openwrt -p 'x28-overlay-*.tar.gz' -D ov
+          mkdir overlay && tar -xzf ov/x28-overlay-*.tar.gz -C overlay
+
       - name: Unit tests
         run: |
+          for t in tools/build/test_*.py; do python3 "$t" || exit 1; done
           for t in tools/recovery/test_*.py tools/x28-flasher/test_*.py; do python3 "$t" || exit 1; done
           python3 tools/recovery/common.py
 

@@ -6,12 +6,12 @@ Backup, verify and guarded flashing tools for the ZLT X28 5G CPE (MediaTek MT689
 
 - `tools/recovery/`: backup and verify, mtkclient setup, USB reads, and the guarded flash sessions (dry run first, typed phrase per step). Do not edit these mid-chain: their hashes bind the receipts.
 - `tools/x28-flasher/`: the wizard and the single-binary build (PyInstaller). Frozen builds are read-only.
-- `firmware/`: git submodule of the firmware repo, pinned. `tools/build` is a symlink into it (`package_ubi.py`, `stage_native.py`, `ab_guard.py`, `first_boot.py`, the tools Dockerfile).
+- `tools/build/`, `tools/firmware/`: image assembly (`stage_native.py`, `first_boot.py`, `ab_guard.py`, `package_ubi.py`) and the tools container. `first_boot.py` reads the firmware's package files from the release's `x28-overlay-*.tar.gz` (the wizard downloads it; set `X28_OVERLAY` or extract it to `overlay/` to run the scripts or tests by hand).
 
 ```
-git clone --recurse-submodules git@github.com:mralinp/x28-flasher.git
+git clone git@github.com:mralinp/x28-flasher.git
 for t in tools/recovery/test_*.py tools/x28-flasher/test_*.py; do python3 "$t"; done
 ```
 
-Flashable images are downloaded from the firmware repo's releases. The vendor download agent and any firmware dumps are never committed.
+This repo does not depend on the firmware repo's code: images, userspace, feed packages and the overlay are downloaded from its releases and hash-checked. The vendor download agent and any firmware dumps are never committed.
 Licence: GPL-2.0-only.

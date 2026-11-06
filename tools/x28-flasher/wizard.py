@@ -257,7 +257,7 @@ def build_local(fl, ui, cfg, dest):
         stock = cache / "rootfs-b-system.tar.gz"
         if not stock.is_file():
             print("  " + paint("Extracting the stock rootfs from your backup in the container...", "dim"))
-            if subprocess.call(["docker", "build", "-q", "-t", "x28-firmware-tools:ubi", "-f", str(REPO / "firmware/tools/firmware/Dockerfile"), str(REPO / "firmware/tools/firmware")], stdout=subprocess.DEVNULL) \
+            if subprocess.call(["docker", "build", "-q", "-t", "x28-firmware-tools:ubi", "-f", str(REPO / "tools/firmware/Dockerfile"), str(REPO / "tools/firmware")], stdout=subprocess.DEVNULL) \
                     or subprocess.call(images.stock_command(rootfs_b, cache, REPO)) or not stock.is_file() or stock.stat().st_size < 10_000_000:
                 stock.unlink(missing_ok=True)
                 print("  " + bad("Could not extract the stock rootfs."))
@@ -276,7 +276,7 @@ def build_local(fl, ui, cfg, dest):
     work.mkdir(parents=True)
     for cmd in images.local_commands(inputs, work, out, REPO):
         print("  " + paint("$ " + " ".join(cmd[:3]) + " ...", "dim"))
-        if subprocess.call(cmd) != 0:
+        if subprocess.call(cmd, env={**os.environ, "X28_OVERLAY": inputs["overlay"]}) != 0:
             print("  " + bad(f"Build stopped at {cmd[0]} {cmd[1]}; nothing was flashed. Folder kept: {work}"))
             return 1
     cfg.set("last_image", str(out))

@@ -70,6 +70,15 @@ class LocalTests(unittest.TestCase):
         self.assertEqual(cmds[3][-1], "/out/native-ubi-local-1")
 
 
+def overlay_tar(name="package/x28-leds/files/x"):
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        info = tarfile.TarInfo(name)
+        info.size = 1
+        tar.addfile(info, io.BytesIO(b"x"))
+    return buf.getvalue()
+
+
 def public_inputs(tamper=False):
     blobs, assets = {}, {"latest": [], "feed-2": []}
 
@@ -79,6 +88,7 @@ def public_inputs(tamper=False):
         assets[tag].append({"name": name, "browser_download_url": url, "digest": "sha256:" + images.sha256(b"x" if tamper else data)})
 
     add("latest", "x28-userspace-v1-openwrt-23.05.5-armsr-armv8-rootfs.tar.gz", b"userspace")
+    add("latest", "x28-overlay-v1.tar.gz", overlay_tar())
     add("latest", "SHA256SUMS", b"ignored")
     for name in ("ipset_1.ipk", "libipset13_1.ipk", "x28-ipset-kernel_1.ipk", "kmod-other.ipk"):
         add("feed-2", name, name.encode())
@@ -105,6 +115,16 @@ class InputTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             images.fetch_inputs(dest, fetch=public_inputs(tamper=True))
         self.assertEqual(list(dest.iterdir()), [])
+
+    def test_overlay_is_extracted_and_escapes_are_refused(self):
+        dest = Path(tempfile.mkdtemp())
+        with mock.patch.dict(images.EXTRA_IPKS, {n: (b, images.sha256(n.encode())) for n, (b, _) in images.EXTRA_IPKS.items()}):
+            out = images.fetch_inputs(dest, fetch=public_inputs())
+        self.assertTrue((Path(out["overlay"]) / "package/x28-leds/files/x").is_file())
+        bad = dest / "bad.tar.gz"
+        bad.write_bytes(overlay_tar("../evil"))
+        with self.assertRaises(ValueError):
+            images.extract_overlay(bad, dest / "bad")
 
     def test_stock_extraction_is_offline_and_read_only(self):
         cmd = images.stock_command(Path("/b/rootfs_b.bin"), Path("/o"), Path("/r"))

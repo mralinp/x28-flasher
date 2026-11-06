@@ -88,18 +88,36 @@ def release_assets(tag, fetch=get, repo=REPO):
     raise RuntimeError("no release carries the userspace tarball")
 
 
+def extract_overlay(archive, dest):
+    """The firmware's package files (first_boot reads them via X28_OVERLAY); only plain files and directories under package/ are accepted."""
+    if dest.is_dir():
+        return dest
+    with tarfile.open(archive) as tar:
+        members = tar.getmembers()
+        for m in members:
+            parts = Path(m.name).parts
+            if not (m.isfile() or m.isdir()) or Path(m.name).is_absolute() or ".." in parts or parts[0] != "package":
+                raise ValueError(f"unexpected overlay entry: {m.name}")
+        tmp = dest.with_name(dest.name + ".part")
+        tar.extractall(tmp, members)
+    tmp.rename(dest)
+    return dest
+
+
 def fetch_inputs(dest, fetch=get):
-    """The public build inputs, cached in dest: userspace tarball, the two OpenWrt ipks and the X28 feed's ipset packages."""
+    """The public build inputs, cached in dest: userspace tarball, the firmware overlay (package files), the two OpenWrt ipks and the X28 feed's ipset packages."""
     out = {"extra_ipks": [], "feed": []}
     for name, (url, want) in release_assets("latest", fetch).items():
         if name.startswith("x28-userspace-") and name.endswith("-rootfs.tar.gz"):
             out["modern"] = str(fetch_checked(url, want, dest / name, fetch))
+        if name.startswith("x28-overlay-") and name.endswith(".tar.gz"):
+            out["overlay"] = str(extract_overlay(fetch_checked(url, want, dest / name, fetch), dest / name.removesuffix(".tar.gz")))
     for name, (url, want) in release_assets("feed-2", fetch).items():
         if name.startswith(FEED_PREFIXES):
             out["feed"].append(str(fetch_checked(url, want, dest / name, fetch)))
     for name, (base, want) in EXTRA_IPKS.items():
         out["extra_ipks"].append(str(fetch_checked(base + name, want, dest / name, fetch)))
-    if "modern" not in out or len(out["feed"]) != len(FEED_PREFIXES):
+    if "overlay" not in out or "modern" not in out or len(out["feed"]) != len(FEED_PREFIXES):
         raise RuntimeError("the release or feed-2 is missing an expected file")
     return out
 
@@ -116,13 +134,13 @@ def local_commands(inputs, work, out, repo, python="python3"):
     """The three build steps, in order. inputs: stock, modern, key (files), extra_ipks, kmods, feed (stage extras, kmods dir, feed ipks)."""
     stage, profile = work / "stage", work / "profile"
     return [
-        [python, str(repo / "firmware/tools/build/stage_native.py"), "--stock", inputs["stock"], "--modern", inputs["modern"],
+        [python, str(repo / "tools/build/stage_native.py"), "--stock", inputs["stock"], "--modern", inputs["modern"],
          "--ipk", *inputs["extra_ipks"], "--output", str(stage)],
-        [python, str(repo / "firmware/tools/build/first_boot.py"), "--stage", str(stage), "--public-key", inputs["key"], "--stock", inputs["stock"],
+        [python, str(repo / "tools/build/first_boot.py"), "--stage", str(stage), "--public-key", inputs["key"], "--stock", inputs["stock"],
          "--output", str(profile), "--kmods", inputs["kmods"], "--ipk", *inputs["feed"]],
-        ["docker", "build", "-t", "x28-firmware-tools:ubi", "-f", str(repo / "firmware/tools/firmware/Dockerfile"), str(repo / "firmware/tools/firmware")],
+        ["docker", "build", "-t", "x28-firmware-tools:ubi", "-f", str(repo / "tools/firmware/Dockerfile"), str(repo / "tools/firmware")],
         ["docker", "run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-         "--tmpfs", "/tmp:rw,exec,size=768m", "-v", f"{repo / 'firmware/tools'}:/tools:ro", "-v", f"{profile}:/profile:ro",
+         "--tmpfs", "/tmp:rw,exec,size=768m", "-v", f"{repo / 'tools'}:/tools:ro", "-v", f"{profile}:/profile:ro",
          "-v", f"{out.parent}:/out", "x28-firmware-tools:ubi", "python3", "/tools/build/package_ubi.py", "--profile", "/profile",
          "--output", f"/out/{out.name}"],
     ]
