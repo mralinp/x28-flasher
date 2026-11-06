@@ -142,6 +142,7 @@ function drawSide() {
       <dt class="mut">MEID</dt><dd class="mono" style="font-size:11.5px">${esc(i.meid || "?")}</dd>
       <dt class="mut">Flash</dt><dd>${esc(i.flashtype || "?")} · ${mb(i.flashsize)}</dd>
       <dt class="mut">Mode</dt><dd>${esc(i.flashmode || "?")}</dd>
+      <dt class="mut">USB</dt><dd>${esc(i.usb || "?")}</dd>
       <dt class="mut">Partitions</dt><dd>${(i.table || []).length}</dd>
       ${identityRows(i.identity || [])}
     </dl>
@@ -304,6 +305,7 @@ function viewBackup() {
       : `<label class="f"><span class="lbl">Vendor download agent (DA_BR.bin)</span><span style="display:flex;gap:8px"><input type="text" id="bk-loader" value="${esc(st.loader.path)}"><button type="button" class="btn" data-act="browse" data-target="bk-loader" data-kind="file" style="flex:none;height:40px">Browse…</button></span></label>
       <div class="warn">The download agent was not found. It is not shipped; choose your copy.</div>`}
     <label class="chk"><input class="sw" type="checkbox" id="bk-twice" checked><span>Read every partition twice (about twice as long, recommended)</span></label>
+    <label class="chk"><input class="sw" type="checkbox" id="bk-fast"><span>Fast USB reads (experimental; watch the MiB/s in the console)</span></label>
     <div><button class="primary" data-act="backup" ${busy() ? "disabled" : ""}>Start backup</button></div>
   </div>
   ${S.job && S.job.kind === "backup" ? consoleHtml() : ""}
@@ -411,7 +413,7 @@ document.addEventListener("click", async (e) => {
   }
   if (a === "pw-next") return pwNext();
   if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
-  if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader")?.value, twice: $("#bk-twice").checked });
+  if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader")?.value, twice: $("#bk-twice").checked, fast: $("#bk-fast").checked });
   if (a === "run") { S.job = null; if (await start(t.dataset.run)) drawView(); return; }
   if (a === "write") {
     if (![...document.querySelectorAll(".risk")].every((c) => c.checked)) return;  // the server refuses without accept too

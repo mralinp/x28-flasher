@@ -70,7 +70,7 @@ def main():
         cfg, state = mtk.config, read_state(out)
         info = {"hwcode": state.get("hwcode") or attr(cfg, "hwcode"), "meid": state.get("meid") or attr(cfg, "meid"),
                 "flashtype": state.get("flashtype") or attr(cfg, "flashtype"), "flashsize": state.get("flashsize") or attr(cfg, "flashsize"),
-                "flashmode": state.get("flashmode") or attr(cfg, "flashmode"),
+                "usb": read_by_name.usb_speed(mtk), "flashmode": state.get("flashmode") or attr(cfg, "flashmode"),
                 "target_config": state.get("target_config") if isinstance(state.get("target_config"), dict) else None,
                 "table": [{"name": n, "start": s, "size": z} for n, s, z in ROW.findall(text)],
                 "identity": identity_values(productinfo) if productinfo else []}

@@ -159,7 +159,8 @@ def build_command(fl, action, params, loader):
         out = str(params.get("out") or "").strip()
         if not out:
             raise ValueError("choose a folder for the backup")
-        return script_cmd(fl, fl.RECOVERY / "usb_backup.py", ["--out", out, "--loader", loader] + ([] if params.get("twice", True) else ["--no-verify"]))
+        return script_cmd(fl, fl.RECOVERY / "usb_backup.py", ["--out", out, "--loader", loader] + ([] if params.get("twice", True) else ["--no-verify"])
+                          + (["--fast"] if params.get("fast") else []) + (["--chunk-mib", str(int(params["chunk"]))] if params.get("chunk") else []))
     if action in WRITE_ACTIONS and params.get("accept") is not True:
         raise ValueError("accept the risk first: this writes the board")
     if action in WIZARD_ACTIONS + WRITE_ACTIONS:

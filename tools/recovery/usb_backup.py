@@ -25,13 +25,14 @@ BEST_EFFORT = {"expdb"}  # crash logs the running system rewrites; the download 
 CHUNK = 4 << 20  # one 20 MiB READ-FLASH came back at 18 MiB on this DA, twice; small reads also show which piece fails
 
 
-def read_chunked(readflash, part, path, chunk=CHUNK, say=print):
+def read_chunked(readflash, part, path, chunk=CHUNK, say=print, clock=time.monotonic):
     """readflash(addr, length, filename) -> bool for one piece; the pieces are joined into path. False at the first bad piece."""
     tmp = Path(str(path) + ".chunk")
     with open(path, "wb") as out:
         for off in range(0, part["size"], chunk):
             n = min(chunk, part["size"] - off)
             tmp.unlink(missing_ok=True)
+            t0 = clock()
             ok = readflash(part["offset"] + off, n, str(tmp))
             got = tmp.stat().st_size if tmp.exists() else 0
             if not ok or got != n:
@@ -39,7 +40,7 @@ def read_chunked(readflash, part, path, chunk=CHUNK, say=print):
                 tmp.unlink(missing_ok=True)
                 return False
             out.write(tmp.read_bytes())
-            say(f"\r  {part['name']}: {off + n >> 20} of {part['size'] >> 20} MiB", end="")
+            say(f"\r  {part['name']}: {off + n >> 20} of {part['size'] >> 20} MiB  {n / 2**20 / max(clock() - t0, 1e-9):.2f} MiB/s", end="")
     tmp.unlink(missing_ok=True)
     say("")
     return True
@@ -134,6 +135,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--loader", type=Path, required=True, help="download agent file (DA_BR.bin)")
+    ap.add_argument("--fast", action="store_true", help="mtkclient's fast USB read path (experimental; compare the MiB/s shown)")
+    ap.add_argument("--chunk-mib", type=int, default=CHUNK >> 20, help="size of one READ-FLASH piece (the DA stops at 18 MiB, so keep it small)")
     ap.add_argument("--no-verify", action="store_true", help="read each partition once (half the time, no cross-check)")
     args = ap.parse_args()
     layout_text = LAYOUT.read_text()
@@ -144,11 +147,13 @@ def main():
     from read_by_name import connect, problems  # re-runs this script under the mtkclient venv when not frozen
     os.chdir(args.out)  # mtkclient drops its hwparam/state files in the working directory
     mtk = connect(args.out.resolve(), args.loader.resolve())
+    if args.fast:
+        mtk.port.cdc.set_fast_mode(True)
     try:
         def read(p, path):
             problems.attach()
             return read_chunked(lambda addr, n, name: mtk.daloader.readflash(addr=addr, length=n, filename=name, parttype=None, display=False) is True,
-                                p, path, say=lambda m, **kw: print(m, flush=True, **kw))
+                                p, path, chunk=args.chunk_mib << 20, say=lambda m, **kw: print(m, flush=True, **kw))
         sums = write_backup(args.out.resolve(), parts, read, verify=not args.no_verify)
     except NeedsRestart as stop:
         print(f"\n{stop}")

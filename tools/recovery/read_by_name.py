@@ -47,7 +47,17 @@ def connect(out, loader):
     mtk = mtk and handler.configure_da(mtk)
     if mtk is None:
         sys.exit("could not reach the download agent")
+    if speed := usb_speed(mtk):
+        print(f"USB link: {speed}", flush=True)
     return mtk
+
+
+def usb_speed(mtk):
+    """The negotiated USB link of the download agent: 'high (480 Mbit/s)' is USB 2.0 at full rate; 'full (12 Mbit/s)' is a bad hub or cable."""
+    try:
+        return {1: "low (1.5 Mbit/s)", 2: "full (12 Mbit/s)", 3: "high (480 Mbit/s)", 4: "super (5 Gbit/s)"}.get(mtk.port.cdc.device.speed)
+    except Exception:
+        return None
 
 
 def read_partition(da, name):
