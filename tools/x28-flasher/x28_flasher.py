@@ -4,7 +4,8 @@
 Picks the UART, keeps its capture running, then hands over to the guarded tools in tools/recovery/, which
 keep every guard (dry run, receipts, typed phrase, second backup copy, base hash). Nothing here writes flash itself.
 
-    x28_flasher.py                 menu
+    x28_flasher.py                 open the page in the browser (gui)
+    x28_flasher.py wizard          the menu in the terminal
     x28_flasher.py ports           serial ports found
     x28_flasher.py uart            capture the chosen UART to a log (Ctrl-C stops)
     x28_flasher.py read [part]     read one partition by name and compare with the backup (read-only)
@@ -17,6 +18,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 from pathlib import Path
 
 FROZEN = getattr(sys, "frozen", False)
@@ -92,6 +94,10 @@ def log_dir():
 
 def start_capture(ui=None):
     """Start the background UART logger, or return the one already running (cap, path)."""
+    if os.environ.get("X28_UART_LOG"):  # the page already runs the logger; the serial port can be opened only once
+        path = Path(os.environ["X28_UART_LOG"])
+        print("  " + good(f"UART logger already running in the page: {path}"))
+        return types.SimpleNamespace(bytes=path.stat().st_size if path.exists() else 0, is_alive=lambda: True, stop_event=threading.Event()), path
     if SESSION.get("cap") and SESSION["cap"].is_alive():
         print("  " + good(f"UART logger already running: {SESSION['path']} ({SESSION['cap'].bytes} bytes)"))
         return SESSION["cap"], SESSION["path"]
@@ -236,8 +242,21 @@ def selftest():
 def main():
     if "--selftest" in sys.argv:
         return selftest()
+    if sys.argv[1:2] == ["--run-script"]:  # how the page runs a tool when frozen: no second interpreter to call
+        import runpy
+        sys.argv = sys.argv[2:]
+        try:
+            runpy.run_path(sys.argv[0], run_name="__main__")
+        except SystemExit as done:
+            return done.code or 0
+        return 0
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd")
+    sub.add_parser("gui").set_defaults(fn=lambda a: __import__("gui").serve(sys.modules[__name__]))
+    sub.add_parser("wizard").set_defaults(fn=lambda a: __import__("wizard").run(sys.modules[__name__]))
+    ru = sub.add_parser("run")  # one wizard step with plain prompts; the page runs these and relays the questions
+    ru.add_argument("action", choices=("build", "test", "read", "flash"))
+    ru.set_defaults(fn=lambda a: __import__("wizard").run_action(sys.modules[__name__], a.action))
     sub.add_parser("ports").set_defaults(fn=cmd_ports)
     sub.add_parser("uart").set_defaults(fn=cmd_uart)
     sub.add_parser("identity").set_defaults(fn=cmd_identity)
@@ -256,9 +275,9 @@ def main():
     f.add_argument("--loader")
     f.set_defaults(fn=cmd_flash)
     args = ap.parse_args()
-    if not args.cmd:
-        import wizard
-        sys.exit(wizard.run(sys.modules[__name__]))
+    if not args.cmd:  # a bare launch opens the page; `wizard` is the terminal menu
+        import gui
+        sys.exit(gui.serve(sys.modules[__name__]))
     sys.exit(args.fn(args) or 0)
 
 

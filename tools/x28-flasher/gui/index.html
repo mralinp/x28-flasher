@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>X28 Flasher</title>
+<style>
+:root{--bg:#0d0f13;--panel:#11141a;--card:#151922;--line:#232834;--line2:#2b3240;--tx:#e6e8ec;--mut:#9aa3b2;--acc:#5eead4;--ok:#4ade80;--warn:#f5b84a;--bad:#f87171}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.mono{font-family:ui-monospace,"JetBrains Mono",Menlo,monospace}
+.mut{color:var(--mut)}
+.app{display:flex;flex-direction:column;height:100vh;min-height:560px}
+header{height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+.body{flex:1;min-height:0;display:flex}
+aside{width:320px;flex:none;padding:20px;display:flex;flex-direction:column;gap:18px;border-right:1px solid var(--line);background:var(--panel);overflow:auto}
+main{flex:1;min-width:0;padding:28px 32px 24px;overflow:auto;display:flex;flex-direction:column;gap:18px}
+h1{margin:0 0 6px;font-size:22px;font-weight:600}
+h2{margin:0;font-size:20px;font-weight:600}
+p{margin:0}
+.lead{font-size:14px;line-height:1.5;color:var(--mut)}
+.lbl{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
+.btn{height:32px;padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:transparent;font-size:13px}
+.btn:hover{background:#1f2530}
+.primary{height:44px;padding:0 28px;border-radius:10px;border:0;background:var(--acc);color:#04201d;font-size:14px;font-weight:600}
+.primary:hover:not(:disabled){background:#7ff3e2}
+.primary:disabled,.btn:disabled{opacity:.45;cursor:not-allowed}
+.mi{display:flex;align-items:center;gap:12px;width:100%;height:42px;padding:0 12px;border-radius:8px;border:0;background:transparent;font-size:13.5px;text-align:left}
+.mi:hover:not(:disabled){background:#1b212b}
+.mi.on{background:#1c2a2b;color:var(--acc)}
+.mi:disabled{color:#6b7385;cursor:not-allowed}
+.card{display:flex;flex-direction:column;gap:8px;padding:18px;min-height:128px;border-radius:12px;border:1px solid var(--line);background:var(--card);text-align:left}
+.card:hover:not(:disabled){border-color:#3a4354;background:#191e29}
+.card.start{border-color:#2f6f68}
+.grid3{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
+.box{border:1px solid var(--line);border-radius:12px;background:var(--card)}
+.chip{padding:3px 9px;border-radius:999px;background:#1b212b;border:1px solid var(--line2);color:var(--mut);font-size:11.5px}
+.chip.on{color:var(--warn)}
+dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:9px 14px;font-size:12.5px}
+dd{margin:0;text-align:right;overflow-wrap:anywhere}
+label.f{display:flex;flex-direction:column;gap:8px}
+input[type=text],select{height:40px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:#0a0c10;font-size:12.5px;width:100%}
+.opt{display:block;width:100%;padding:14px 16px;border-radius:10px;border:1px solid var(--line2);background:var(--card);text-align:left}
+.sw{width:18px;height:18px;accent-color:var(--acc)}
+.chk{display:flex;align-items:center;gap:10px;min-height:28px}
+.warn{padding:12px 16px;border-radius:10px;background:#2a2114;color:var(--warn);line-height:1.5}
+.note{padding:12px 16px;border-radius:10px;background:#162826;color:#9be8dc;line-height:1.5}
+.bad{background:#2a1618;color:var(--bad)}
+table{width:100%;border-collapse:collapse}
+th{position:sticky;top:0;background:var(--card);text-align:left;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);padding:8px}
+td{padding:7px 8px;border-top:1px solid #1d222c;font-size:12.5px}
+.scroll{max-height:340px;overflow:auto}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 ui-monospace,"JetBrains Mono",Menlo,monospace;color:#c4cad6}
+.log{background:#0a0c10;border:1px solid var(--line);border-radius:12px;padding:12px 14px;max-height:340px;min-height:120px;overflow:auto}
+.steps{display:flex;align-items:center;gap:12px;list-style:none;margin:0;padding:0}
+.steps li{display:flex;align-items:center;gap:8px}
+.steps i{width:24px;height:24px;border-radius:50%;border:1.5px solid;display:flex;align-items:center;justify-content:center;font-style:normal}
+.center{align-items:center;justify-content:center;text-align:center}
+.dot{width:10px;height:10px;border-radius:50%}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin{animation:spin 1s linear infinite}
+[hidden]{display:none!important}
+@media (max-width:820px){.body{flex-direction:column}aside{width:auto;border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>
+    <b style="font-size:14px">X28 Flasher</b><span class="mut" style="font-size:12px">MediaTek · XML download agent</span>
+  </header>
+  <div class="body">
+    <aside>
+      <section id="device" style="display:flex;flex-direction:column;gap:14px"></section>
+      <div style="height:1px;background:var(--line)"></div>
+      <nav id="nav" aria-label="Tasks" style="display:flex;flex-direction:column;gap:2px"></nav>
+    </aside>
+    <main id="view"></main>
+  </div>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const ICON = {
+  home: "M3 11 12 3l9 8M5 9.5V21h14V9.5",
+  backup: "M12 3v12m0 0-4-4m4 4 4-4M5 21h14",
+  build: "M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.4 2.4-2.6-.6-.6-2.6z",
+  flash: "M13 2 4 14h7l-1 8 9-12h-7z",
+  read: "M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6",
+  test: "M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3",
+  uart: "M3 12h4l3-8 4 16 3-8h4",
+  rescue: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
+  access: "M4 5h16v14H4zM7 10l3 2-3 2M12 15h5",
+};
+const svg = (d, c = "currentColor", n = 18) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+const MENU = [
+  ["backup", "Backup", "Save every partition on the board to this computer. Do this first."],
+  ["build", "Build image", "Download the newest OpenWrt image, or build one here from your backup and vendor files."],
+  ["flash", "Flash OpenWrt", "Rehearse, then write an image to slot A. Every guard and typed confirmation stays."],
+  ["read", "Read & verify", "Read one partition from the board and compare it with your backup. Writes nothing."],
+  ["test", "Self-test", "Check setup, the patched library and a real read. Writes nothing."],
+  ["uart", "UART monitor", "Capture the serial console to a log. A flash needs it unless you have no adapter."],
+  ["rescue", "Rescue modem", "Not in the page yet."],
+  ["access", "SSH / Telnet", "Not in the page yet."],
+];
+const S = { screen: "home", st: null, job: null, es: null, pw: null, uartTimer: null };
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+async function refresh() { S.st = await api("/api/state"); drawSide(); }
+const busy = () => !!(S.job && S.job.code === null);
+
+/* ---------- sidebar ---------- */
+function mb(n) { return n ? Math.round(n / 1048576) + " MiB" : "?"; }
+function drawSide() {
+  const i = S.st && S.st.info;
+  let h;
+  if (i) {
+    const tc = i.target_config || {};
+    h = `<div style="display:flex;align-items:center;gap:10px"><span class="dot" style="background:var(--ok)"></span><b style="font-size:15px">Device read</b></div>
+    <dl>
+      <dt class="mut">Hardware ID</dt><dd class="mono">${i.hwcode != null ? "0x" + Number(i.hwcode).toString(16) : "?"}</dd>
+      <dt class="mut">MEID</dt><dd class="mono" style="font-size:11.5px">${esc(i.meid || "?")}</dd>
+      <dt class="mut">Flash</dt><dd>${esc(i.flashtype || "?")} · ${mb(i.flashsize)}</dd>
+      <dt class="mut">Mode</dt><dd>${esc(i.flashmode || "?")}</dd>
+      <dt class="mut">Partitions</dt><dd>${(i.table || []).length}</dd>
+    </dl>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${["sbc", "sla", "daa"].map((k) => `<span class="chip ${tc[k] ? "on" : ""}">${k.toUpperCase()} ${tc[k] ? "on" : "off"}</span>`).join("")}</div>
+    ${(i.proinfo_strings || []).length ? `<details><summary class="mut" style="cursor:pointer">Identity strings (proinfo)</summary><pre style="margin-top:8px">${esc(i.proinfo_strings.join("\n"))}</pre></details>` : ""}
+    <p class="mut" style="font-size:12px">The board is waiting in download mode. Power-cycle it to boot normally.</p>
+    <button class="btn" data-act="connect" ${busy() ? "disabled" : ""} style="align-self:flex-start">Read again</button>`;
+  } else {
+    h = `<div style="display:flex;align-items:center;gap:10px"><span class="dot" style="background:#6b7385"></span><b style="font-size:15px">No device read yet</b></div>
+    <p class="mut">Connect reads the hardware ID, MEID, flash and the partitions on the board.</p>
+    <button class="primary" data-act="connect" ${busy() ? "disabled" : ""} style="height:42px">Connect device</button>`;
+  }
+  $("#device").innerHTML = h;
+  $("#nav").innerHTML = [["home", "Home"], ...MENU.map((m) => [m[0], m[1]])].map(([id, label]) =>
+    `<button class="mi ${S.screen === id ? "on" : ""}" data-go="${id}">${svg(ICON[id])}${label}</button>`).join("");
+}
+
+/* ---------- console for a running job ---------- */
+function consoleHtml() { return `<div id="console"></div>`; }
+function drawConsole() {
+  const el = $("#console"), j = S.job;
+  if (!el || !j) return;
+  const text = j.lines.join("\n") + (j.tail ? (j.lines.length ? "\n" : "") + j.tail : "");
+  const opts = [];
+  for (let k = j.lines.length - 1; k >= 0; k--) { const m = /^\s*(\d+)\) (.+)$/.exec(j.lines[k]); if (!m) break; opts.unshift([m[1], m[2]]); }
+  const yn = /\[(Y\/n|y\/N)\]:\s*$/.test(j.tail);
+  const running = j.code === null;
+  const log = el.querySelector("pre");
+  const near = !log || log.parentElement.scrollHeight - log.parentElement.scrollTop - log.parentElement.clientHeight < 40;
+  if (!log) {
+    el.innerHTML = `<div style="display:flex;flex-direction:column;gap:12px">
+      <div class="log" id="logbox"><pre id="logtext"></pre></div>
+      <div id="ctl"></div></div>`;
+  }
+  $("#logtext").textContent = text;
+  if (near) $("#logbox").scrollTop = $("#logbox").scrollHeight;
+  const ctl = $("#ctl");
+  const key = JSON.stringify([running, j.tail, opts, j.code]);
+  if (ctl.dataset.key === key) return;
+  ctl.dataset.key = key;
+  if (running) {
+    ctl.innerHTML = `<form data-act="send" style="display:flex;gap:8px;flex-wrap:wrap">
+      ${yn ? `<button type="button" class="btn" data-send="y">Yes</button><button type="button" class="btn" data-send="n">No</button>` : ""}
+      ${opts.map(([n, l]) => `<button type="button" class="btn" data-send="${n}">${esc(n)}) ${esc(l)}</button>`).join("")}
+      <input type="text" id="answer" autocomplete="off" placeholder="${j.tail ? "Type your answer, or press Enter for the default" : "The tool is working…"}" style="flex:1;min-width:200px;height:32px" ${j.tail ? "" : "disabled"}>
+      <button class="btn" ${j.tail ? "" : "disabled"}>Send ⏎</button>
+      <button type="button" class="btn" data-act="stop" title="Same as Ctrl-C in the terminal">Stop</button></form>`;
+    if (j.tail) $("#answer").focus({ preventScroll: true });
+  } else {
+    ctl.innerHTML = `<div class="${j.code === 0 ? "note" : "warn bad"}">${j.code === 0 ? "Finished." : `Stopped with exit code ${j.code}.`} ${esc(doneHint(j))}</div>`;
+  }
+}
+const doneHint = (j) => j.kind === "identify" || j.kind === "backup" ? "Power-cycle the board before the next step." : "";
+
+function watch(id, kind) {
+  S.job = { id, kind, lines: [], tail: "", code: null };
+  if (S.es) S.es.close();
+  const es = S.es = new EventSource(`/api/job/${id}/stream`);
+  es.onmessage = async (e) => {
+    const d = JSON.parse(e.data), j = S.job;
+    if (!j || j.id !== id) return es.close();
+    j.lines.push(...d.lines); j.tail = d.tail; j.code = d.code;
+    drawConsole();
+    if (d.code !== null) {
+      es.close();
+      await refresh();
+      const wasPw = S.pw;
+      S.pw = null;
+      if (wasPw && kind === "identify" && d.code === 0) setTimeout(() => go("backup"), 1500); else drawView();
+    }
+  };
+  es.onerror = () => { if (S.job && S.job.id === id && S.job.code === null) { S.job.tail = ""; } };
+  drawSide(); drawConsole();
+}
+async function start(action, params = {}) {
+  try {
+    const { id } = await api("/api/job", { action, ...params });
+    watch(id, action);
+    return true;
+  } catch (e) { alert(e.message); return false; }
+}
+
+/* ---------- screens ---------- */
+function go(id) {
+  S.screen = id; S.pw = null;
+  clearInterval(S.uartTimer);
+  drawSide(); drawView();
+}
+function head(t, s) { return `<div><h1>${t}</h1><p class="lead">${s}</p></div>`; }
+
+function viewHome() {
+  const i = S.st && S.st.info;
+  return `${head("What do you want to do?", i ? "The board has been read. Back up before you change anything." : "Start with Connect device, then take a backup.")}
+  <div class="grid3">${MENU.map(([id, label, desc]) => {
+    const off = id === "rescue" || id === "access";
+    return `<button class="card ${id === "backup" ? "start" : ""}" data-go="${id}"><span style="color:${off ? "#6b7385" : "var(--acc)"}">${svg(ICON[id], "currentColor", 24)}</span><b style="font-size:15px">${label}</b><span class="mut" style="font-size:12.5px;line-height:1.5">${desc}</span></button>`;
+  }).join("")}</div>`;
+}
+
+function powerWizard(title) {
+  const p = S.pw, c = (n) => p.step === n ? "var(--acc)" : p.step > n ? "var(--ok)" : "#6b7385";
+  const body = p.step === 1 ? `
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v9M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>
+      <h2>Power off the modem</h2>
+      <p class="lead">Switch it off and unplug the power. Keep the USB cable to this computer connected, then press Enter.</p>
+      <button class="primary" data-act="pw-next" id="pwgo">Continue ⏎</button>`
+    : p.step === 2 ? `
+      <div style="position:relative;width:132px;height:132px"><svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true"><circle cx="66" cy="66" r="54" fill="none" stroke="#232834" stroke-width="8"/><circle cx="66" cy="66" r="54" fill="none" stroke="#5eead4" stroke-width="8" stroke-linecap="round" stroke-dasharray="339.3" stroke-dashoffset="${339.3 * (1 - p.count / 10)}" transform="rotate(-90 66 66)"/></svg>
+      <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:40px">${p.count}</span></div>
+      <h2>Keep the power off</h2><p class="lead">Wait 10 seconds. The next step starts by itself.</p>`
+    : `<svg class="spin" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="5" stroke-linecap="round" aria-hidden="true"><circle cx="36" cy="36" r="28" stroke="#232834"/><path d="M36 8a28 28 0 0 1 28 28" stroke="#5eead4"/></svg>
+      <h2>Power on the modem now</h2><p class="lead">Plug the power in, no buttons. Looking for the device on USB.</p>`;
+  return `<div style="display:flex;flex-direction:column;align-items:center;gap:24px;padding-top:12px">
+    <ol class="steps">${["Power off", "Wait", "Power on"].map((l, k) => `<li style="color:${c(k + 1)}"><i>${k + 1}</i>${l}</li>${k < 2 ? '<li style="width:36px;height:1px;background:#2b3240"></li>' : ""}`).join("")}</ol>
+    <div class="box center" style="width:min(520px,100%);padding:36px;display:flex;flex-direction:column;align-items:center;gap:18px">${body}</div>
+    <div style="width:min(760px,100%)">${consoleHtml()}</div>
+    ${busy() ? "" : `<button class="btn" data-act="pw-cancel">Cancel</button>`}</div>`;
+}
+function openPower(kind, params) {
+  S.job = null;
+  S.pw = { step: 1, count: 10, kind, params };
+  S.screen = kind === "identify" ? "wizard" : S.screen;
+  drawSide(); drawView();
+}
+function pwNext() {
+  const p = S.pw;
+  p.step = 2; p.count = 10; drawView();
+  p.timer = setInterval(async () => {
+    if (!S.pw) return clearInterval(p.timer);
+    p.count--;
+    if (p.count > 0) return drawView();
+    clearInterval(p.timer);
+    p.step = 3; drawView();
+    if (!(await start(p.kind, p.params))) { S.pw = null; drawView(); } else drawView();
+  }, 1000);
+}
+
+function viewBackup() {
+  const st = S.st, i = st.info, rows = (i && i.table) || [];
+  if (S.pw) return powerWizard();
+  return `${head("Backup", "Reads every partition twice and keeps it only if both reads agree. Nothing is written to the board. The same folder resumes an unfinished backup.")}
+  <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
+    <label class="f"><span class="lbl">Save the backup in</span><input type="text" id="bk-out" value="${esc(st.backup_out)}"></label>
+    <label class="f"><span class="lbl">Vendor download agent (DA_BR.bin)</span><input type="text" id="bk-loader" value="${esc(st.loader.path)}"></label>
+    ${st.loader.ok ? "" : `<div class="warn">That file does not exist yet. The download agent is not shipped; point this at your copy.</div>`}
+    <label class="chk"><input class="sw" type="checkbox" id="bk-twice" checked><span>Read every partition twice (about twice as long, recommended)</span></label>
+    <div><button class="primary" data-act="backup" ${busy() ? "disabled" : ""}>Start backup</button></div>
+  </div>
+  ${S.job && S.job.kind === "backup" ? consoleHtml() : ""}
+  <div class="box" style="overflow:hidden"><div style="padding:14px 18px;display:flex;align-items:center;gap:12px"><b>On the board</b><span class="mut">${rows.length ? rows.length + " partitions" : ""}</span></div>
+    ${rows.length ? `<div class="scroll"><table><thead><tr><th>Name</th><th>Offset</th><th>Size</th></tr></thead><tbody>${rows.map((r) => `<tr><td class="mono">${esc(r.name)}</td><td class="mono mut">${esc(r.start)}</td><td>${fmt(parseInt(r.size, 16))}</td></tr>`).join("")}</tbody></table></div>`
+      : `<div style="padding:0 18px 18px" class="mut">Connect the device to list the partitions on it.</div>`}</div>`;
+}
+const fmt = (b) => b >= 1048576 ? (Math.round(b / 104857.6) / 10) + " MiB" : Math.round(b / 1024) + " KiB";
+
+function wizardRunner(title, sub, action, label, extra = "") {
+  return `${head(title, sub)}${extra}
+  <div><button class="primary" data-act="run" data-run="${action}" ${busy() ? "disabled" : ""}>${label}</button></div>
+  ${S.job && S.job.kind === action ? consoleHtml() : ""}`;
+}
+function viewFlash() {
+  const st = S.st;
+  if (st.frozen) return `${head("Flash OpenWrt", "")}<div class="warn">This build is read-only. Flashing is refused until the build-time equality gate exists (#272). Run x28-flasher from a source checkout to flash.</div>`;
+  const uart = st.uart && st.uart.running;
+  return wizardRunner("Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write. You answer each question below; the typed confirmation phrase is yours to type.", "flash", "Start flashing",
+    `<div class="box" style="padding:18px;display:grid;gap:10px;max-width:760px">
+      <div>${uart ? "✓" : "○"} UART monitor ${uart ? "running, its log is used" : "is off. A flash needs the log unless you have no adapter."}</div>
+      <div>${st.images.length ? "✓" : "○"} Image: ${st.images.length ? esc(st.images[0]) : "none yet. Use Build image first."}</div>
+      <div class="mut">Backup: <span class="mono">${esc(st.backup_dir)}</span></div>
+    </div><div class="warn" style="max-width:760px">Writes the board. Keep it powered and the USB cable connected until it finishes. Stop does what Ctrl-C does; it cannot undo a write.</div>`);
+}
+function viewUart() {
+  const st = S.st, u = st.uart && st.uart.running ? st.uart : null;
+  S.uartTimer = setInterval(pollUart, 1000); pollUart();
+  return `${head("UART monitor", "Captures the serial console to a log file. The guarded tools refuse a log that was not updated in the last minute.")}
+  <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <label class="f" style="min-width:260px"><span class="lbl">Adapter</span><select id="u-port" ${u ? "disabled" : ""}>${st.ports.length ? st.ports.map((p) => `<option value="${esc(p.device)}" ${u && u.port === p.device ? "selected" : ""}>${esc(p.device)} ${esc(p.desc)}</option>`).join("") : "<option value=''>No adapter found</option>"}</select></label>
+    <label class="f"><span class="lbl">Baud</span><select id="u-baud" ${u ? "disabled" : ""}><option value="921600">921600 (X28 console)</option><option value="115200">115200</option><option value="0">Auto-detect</option></select></label>
+    <button class="primary" data-act="uart" style="height:40px">${u ? "Disable UART" : "Enable UART"}</button>
+  </div>
+  <div class="mut" id="u-status">${u ? `Listening on ${esc(u.port)} @ ${u.baud}` : "UART monitoring is off."}</div>
+  <div class="log" style="flex:1;min-height:220px"><pre id="u-text"></pre></div>`;
+}
+async function pollUart() {
+  if (S.screen !== "uart") return clearInterval(S.uartTimer);
+  try {
+    const d = await api("/api/uart/tail");
+    const t = $("#u-text"); if (!t) return;
+    t.textContent = d.text || (d.status ? "[waiting for output]" : "");
+    t.parentElement.scrollTop = t.parentElement.scrollHeight;
+    S.st.uart = d.status;
+    const s = $("#u-status"); if (s) s.textContent = d.status && d.status.running ? `Listening on ${d.status.port} @ ${d.status.baud} · ${d.status.bytes} bytes → ${d.status.path}` : "UART monitoring is off.";
+  } catch (e) { /* page closed or server stopped */ }
+}
+function viewSoon(title) {
+  return `${head(title, "")}<div class="note" style="max-width:640px">Not available in the page yet. The guarded restore and slot-B tools (<span class="mono">restore_entry.py</span>, <span class="mono">slot_b_entry.py</span>) still run from the terminal; see the firmware repo's <span class="mono">docs/RECOVERY.md</span>.</div>`;
+}
+function viewWizard() { return S.pw ? powerWizard() : `${head("Connect device", "")}${S.job ? consoleHtml() : ""}<div><button class="btn" data-go="home">Back</button></div>`; }
+
+function drawView() {
+  const v = { home: viewHome, wizard: viewWizard, backup: viewBackup, flash: viewFlash, uart: viewUart,
+    build: () => wizardRunner("Build image", "Download the newest release image, or build one here from your backup and vendor files (needs Docker and a source checkout). The checksum is verified; Flash still asks for the image hash.", "build", "Build image"),
+    read: () => wizardRunner("Read & verify", "Reads one partition by name and compares it with your backup. Read-only.", "read", "Read a partition"),
+    test: () => wizardRunner("Self-test", "Serial ports, backup, download agent and the patched library. Optionally reads lk_b and compares it. Read-only.", "test", "Run self-test"),
+    rescue: () => viewSoon("Rescue modem"), access: () => viewSoon("SSH / Telnet") }[S.screen];
+  $("#view").innerHTML = v();
+  if (S.job && $("#console")) drawConsole();
+  const next = $("#pwgo"); if (next) next.focus();
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", async (e) => {
+  const t = e.target.closest("[data-go],[data-act],[data-send]");
+  if (!t) return;
+  if (t.dataset.go) return go(t.dataset.go);
+  if (t.dataset.send !== undefined) return api(`/api/job/${S.job.id}/input`, { text: t.dataset.send });
+  const a = t.dataset.act;
+  if (a === "connect") { S.screen = "wizard"; return openPower("identify", {}); }
+  if (a === "pw-next") return pwNext();
+  if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
+  if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader").value, twice: $("#bk-twice").checked });
+  if (a === "run") { S.job = null; if (await start(t.dataset.run)) drawView(); return; }
+  if (a === "stop") { const j = S.job; await api(`/api/job/${j.id}/stop`, { force: false }); return; }
+  if (a === "uart") {
+    const on = !(S.st.uart && S.st.uart.running);
+    try { await api("/api/uart", { on, port: $("#u-port").value, baud: Number($("#u-baud").value) }); } catch (er) { alert(er.message); }
+    await refresh(); drawView();
+  }
+});
+document.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const el = $("#answer");
+  if (el && S.job) { const text = el.value; el.value = ""; await api(`/api/job/${S.job.id}/input`, { text }); }
+});
+(async () => { await refresh(); drawView(); })();
+</script>
+</body>
+</html>

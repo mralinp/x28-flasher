@@ -1,0 +1,304 @@
+"""The browser front end of x28-flasher: a page on 127.0.0.1 that drives the same guarded tools as the wizard.
+
+Nothing here writes flash. Every device action is one of the existing tools run as a child process; its questions (including
+the typed confirmation phrase) reach the page as prompts and only the person at the page answers them. Frozen builds stay
+read-only because the tools themselves refuse (#272).
+"""
+import json
+import os
+import secrets
+import signal
+import subprocess
+import sys
+import threading
+import time
+import webbrowser
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+FROZEN = getattr(sys, "frozen", False)
+ASSETS = (Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parent) / "gui"
+WIZARD_ACTIONS = ("build", "test", "read", "flash")  # the wizard's own steps, run with plain prompts
+INFO_PREFIX = "X28INFO "
+
+
+class Job:
+    """One child process. Output is kept as finished lines plus the unfinished tail (a prompt or a progress bar)."""
+
+    def __init__(self, kind, argv, env=None, on_line=None):
+        self.id, self.kind, self.lines, self.tail, self.code = secrets.token_hex(4), kind, [], "", None
+        self.cond, self.on_line = threading.Condition(), on_line
+        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0,
+                                     env={**os.environ, "PYTHONUNBUFFERED": "1", **(env or {})})
+        threading.Thread(target=self._pump, daemon=True).start()
+
+    def feed(self, text):
+        """Terminal rules: \\n finishes the tail, \\r throws it away (a progress bar redraws itself)."""
+        with self.cond:
+            for ch in text:
+                if ch == "\n":
+                    line, self.tail = self.tail, ""
+                    self.lines.append(line)
+                    if self.on_line:
+                        self.on_line(line)
+                elif ch == "\r":
+                    self.tail = ""
+                else:
+                    self.tail += ch
+            self.cond.notify_all()
+
+    def _pump(self):
+        pending = b""
+        while True:
+            chunk = os.read(self.proc.stdout.fileno(), 4096)
+            if not chunk:
+                break
+            data, pending = pending + chunk, b""
+            try:
+                text = data.decode()
+            except UnicodeDecodeError as err:  # a multi-byte character cut by the read
+                if err.start < len(data) - 4:
+                    text = data.decode(errors="replace")
+                else:
+                    text, pending = data[:err.start].decode(), data[err.start:]
+            self.feed(text)
+        code = self.proc.wait()
+        with self.cond:
+            self.code = code
+            self.cond.notify_all()
+
+    def send(self, text):
+        if self.code is not None:
+            return False
+        self.feed(text + "\n")  # a pipe does not echo; the answer joins the prompt line like on a terminal (before the write: the reply races it)
+        try:
+            self.proc.stdin.write((text + "\n").encode())
+            self.proc.stdin.flush()
+        except OSError:
+            return False
+        return True
+
+    def stop(self, force=False):
+        if self.code is None:
+            self.proc.send_signal(signal.SIGTERM if force else signal.SIGINT)
+
+
+def script_cmd(fl, script, argv):
+    """A tool script under the mtkclient venv from a checkout, or this binary's --run-script when frozen."""
+    return [sys.executable, "--run-script", str(script), *argv] if fl.FROZEN else [str(fl.VENV_PY), str(script), *argv]
+
+
+def action_cmd(fl, action):
+    return [sys.executable, "run", action] if fl.FROZEN else [str(fl.VENV_PY), str(Path(fl.__file__).resolve()), "run", action]
+
+
+def build_command(fl, action, params, loader):
+    """(kind, argv) for a request, or raises ValueError. Pure: nothing runs here."""
+    if action == "identify":
+        return script_cmd(fl, ASSETS / "device_info.py", ["--loader", loader])
+    if action == "backup":
+        out = str(params.get("out") or "").strip()
+        if not out:
+            raise ValueError("choose a folder for the backup")
+        return script_cmd(fl, fl.RECOVERY / "usb_backup.py", ["--out", out, "--loader", loader] + ([] if params.get("twice", True) else ["--no-verify"]))
+    if action in WIZARD_ACTIONS:
+        return action_cmd(fl, action)
+    raise ValueError(f"unknown action {action!r}")
+
+
+class App:
+    def __init__(self, fl):
+        self.fl, self.token, self.jobs, self.current, self.info, self.uart = fl, secrets.token_urlsafe(24), {}, None, None, None
+        self.port = 0
+        self.lock = threading.Lock()
+
+    def config(self):
+        import wizard
+        from common import PRIVATE
+        return wizard.Config(PRIVATE / "x28-flasher.json")
+
+    def loader_path(self, params=None):
+        from common import VENDOR_DA
+        return str((params or {}).get("loader") or self.config().get("loader") or VENDOR_DA)
+
+    def start_job(self, action, params):
+        with self.lock:
+            if self.current and self.current.code is None:
+                raise RuntimeError("another job is still running")
+            loader = self.loader_path(params)
+            if action in ("identify", "backup"):
+                if not Path(loader).is_file():
+                    raise ValueError(f"download agent not found: {loader}")
+                self.config().set("loader", loader)
+            argv = build_command(self.fl, action, params, loader)
+            env = {"X28_RECOVERY": str(self.fl.RECOVERY)}
+            if self.uart and self.uart["cap"].is_alive():
+                env["X28_UART_LOG"] = str(self.uart["path"])
+            def on_line(line):
+                if line.startswith(INFO_PREFIX):
+                    try:
+                        self.info = {**json.loads(line[len(INFO_PREFIX):]), "at": time.time()}
+                    except ValueError:
+                        pass
+            job = Job(action, argv, env, on_line)
+            self.jobs[job.id] = self.current = job
+            return job
+
+    def uart_status(self):
+        u = self.uart
+        if not u:
+            return None
+        return {"port": u["port"], "baud": u["baud"], "path": str(u["path"]), "bytes": u["cap"].bytes, "running": u["cap"].is_alive()}
+
+    def uart_start(self, port, baud):
+        fl = self.fl
+        if self.uart and self.uart["cap"].is_alive():
+            raise RuntimeError("the UART monitor is already running")
+        baud = int(baud) or fl.auto_baud(port) or 921600  # 0 = listen and pick; the X28 console is 921600
+        path = fl.log_dir() / f"x28-uart-{time.strftime('%Y%m%d-%H%M%S')}.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        cap = fl.Capture(port, baud, path)
+        cap.start()
+        self.uart = {"cap": cap, "port": port, "baud": baud, "path": path}
+
+    def uart_stop(self):
+        if self.uart:
+            self.uart["cap"].stop_event.set()
+
+    def uart_tail(self, size=16384):
+        if not self.uart:
+            return ""
+        with open(self.uart["path"], "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - size))
+            return f.read().decode(errors="replace")
+
+    def state(self):
+        from common import DEFAULT_BACKUP, PRIVATE
+        import wizard
+        fl = self.fl
+        try:
+            ports = [{"device": d, "desc": x} for d, x in fl.list_ports()]
+        except Exception:
+            ports = []
+        loader = self.loader_path()
+        images = [d.name for d in wizard.image_dirs(PRIVATE / "build")] if (PRIVATE / "build").is_dir() else []
+        job = self.current
+        return {"frozen": fl.FROZEN, "ports": ports, "loader": {"path": loader, "ok": Path(loader).is_file()},
+                "backup_out": str(fl.default_backup_dir()), "backup_dir": self.config().get("backup") or str(DEFAULT_BACKUP),
+                "images": images, "info": self.info, "uart": self.uart_status(),
+                "job": {"id": job.id, "kind": job.kind, "running": job.code is None} if job else None}
+
+
+def make_handler(app):
+    class Handler(BaseHTTPRequestHandler):
+        server_version = "x28-flasher"
+
+        def log_message(self, *args):
+            pass
+
+        def reply(self, code, body=b"", ctype="application/json", headers=()):
+            if not isinstance(body, bytes):
+                body = json.dumps(body).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            for k, v in headers:
+                self.send_header(k, v)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def allowed(self, post):
+            """Only this machine's page: right Host (DNS rebinding), right cookie, and for POST the page's own Origin."""
+            if self.headers.get("Host") not in (f"127.0.0.1:{app.port}", f"localhost:{app.port}"):
+                return False
+            if f"x28={app.token}" not in (c.strip() for c in (self.headers.get("Cookie") or "").split(";")):
+                return False
+            return not post or self.headers.get("Origin") == f"http://{self.headers.get('Host')}"
+
+        def body(self):
+            n = int(self.headers.get("Content-Length") or 0)
+            return json.loads(self.rfile.read(min(n, 65536)) or b"{}")
+
+        def do_GET(self):
+            url = urlparse(self.path)
+            if url.path == "/" and parse_qs(url.query).get("t") == [app.token] and self.headers.get("Host") in (f"127.0.0.1:{app.port}", f"localhost:{app.port}"):
+                return self.reply(302, headers=[("Location", "/"), ("Set-Cookie", f"x28={app.token}; HttpOnly; SameSite=Strict; Path=/")])
+            if not self.allowed(False):
+                return self.reply(403, b"Open the address that x28-flasher printed in the terminal.", "text/plain")
+            if url.path == "/":
+                return self.reply(200, (ASSETS / "index.html").read_bytes(), "text/html; charset=utf-8")
+            if url.path == "/api/state":
+                return self.reply(200, app.state())
+            if url.path == "/api/uart/tail":
+                return self.reply(200, {"text": app.uart_tail(), "status": app.uart_status()})
+            parts = url.path.strip("/").split("/")
+            if len(parts) == 4 and parts[:2] == ["api", "job"] and parts[3] == "stream" and parts[2] in app.jobs:
+                return self.stream(app.jobs[parts[2]])
+            self.reply(404, {"error": "not found"})
+
+        def stream(self, job):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            sent, last = 0, None
+            try:
+                while True:
+                    with job.cond:
+                        job.cond.wait_for(lambda: len(job.lines) > sent or (job.tail, job.code) != last, timeout=15)
+                        event = {"lines": job.lines[sent:], "tail": job.tail, "code": job.code}
+                        sent, last = len(job.lines), (job.tail, job.code)
+                    self.wfile.write(b"data: " + json.dumps(event).encode() + b"\n\n")
+                    self.wfile.flush()
+                    if event["code"] is not None:
+                        return
+            except (BrokenPipeError, ConnectionResetError):
+                return
+
+        def do_POST(self):
+            if not self.allowed(True):
+                return self.reply(403, {"error": "forbidden"})
+            path = urlparse(self.path).path.strip("/").split("/")
+            try:
+                data = self.body()
+                if path == ["api", "job"]:
+                    job = app.start_job(data.get("action"), data)
+                    return self.reply(200, {"id": job.id})
+                if len(path) == 4 and path[:2] == ["api", "job"] and path[2] in app.jobs:
+                    job = app.jobs[path[2]]
+                    if path[3] == "input":
+                        return self.reply(200, {"ok": job.send(str(data.get("text", "")))})
+                    if path[3] == "stop":
+                        job.stop(bool(data.get("force")))
+                        return self.reply(200, {"ok": True})
+                if path == ["api", "uart"]:
+                    app.uart_start(data["port"], data.get("baud", 0)) if data.get("on") else app.uart_stop()
+                    return self.reply(200, app.uart_status() or {})
+            except (ValueError, RuntimeError, KeyError) as err:
+                return self.reply(409, {"error": str(err)})
+            self.reply(404, {"error": "not found"})
+
+    return Handler
+
+
+def serve(fl, open_browser=True, port=0):
+    app = App(fl)
+    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(app))
+    server.daemon_threads = True
+    app.port = server.server_address[1]
+    url = f"http://127.0.0.1:{app.port}/?t={app.token}"
+    print(f"x28-flasher is open at {url}\nPress Ctrl-C here to quit.", flush=True)
+    if open_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        app.uart_stop()
+        if app.current:
+            app.current.stop()
+    return 0

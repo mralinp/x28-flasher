@@ -83,6 +83,7 @@ def main():
     data += [(f, "recovery") for f in (TOOLS / "recovery").glob("*.py") if not f.name.startswith("test_")]
     data += [(TOOLS / "recovery" / "x28-mtd.txt", "recovery")]
     data += [(TOOLS / "build" / n, "build") for n in BUILD_FILES]
+    data += [(HERE / "gui" / "index.html", "gui"), (HERE / "device_info.py", "gui")]  # the page and the tool it runs
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--name", "x28-flasher",
            "--distpath", args.out, "--workpath", work, "--specpath", work, "--exclude-module", "PySide6", "--exclude-module", "mtkclient.gui",
            "--collect-data", "mtkclient", "--collect-binaries", "usb"]

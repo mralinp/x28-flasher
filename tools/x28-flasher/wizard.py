@@ -381,6 +381,11 @@ def flash(fl, ui, cfg, preset=None):
 ACTIONS = {"backup": backup, "build": build, "auto": autopilot, "test": test_readonly, "read": read_partition, "uart": watch_uart, "flash": flash}
 
 
+def run_action(fl, action):
+    """One step with plain numbered prompts (no terminal tricks), for the page that relays the questions."""
+    return ACTIONS[action](fl, Ui(fancy=False), Config(fl.PRIVATE / "x28-flasher.json")) or 0
+
+
 def run(fl, ui=None):
     ui = ui or Ui()
     cfg = Config(fl.PRIVATE / "x28-flasher.json")
