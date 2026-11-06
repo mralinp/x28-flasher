@@ -178,7 +178,7 @@ class ExecutionTests(unittest.TestCase):
                    patch.object(e, 'active_slot', return_value='b'),
                    patch.object(e, 'open_da', return_value=self.mtk),
                    patch.object(e, 'check_unit'),
-                   patch.object(e.sys, 'executable', str(e.MTK_HOME / 'venv/bin/python')),
+                   patch.object(e.sys, 'prefix', str(e.MTK_HOME / 'venv')),  # ensure_venv compares sys.prefix (#8)
                    patch.object(e.engine, 'run_session', self.engine),
                    patch.dict(e.sys.modules, {'mtkclient.Library.DA.xmlflash.xml_lib': types.SimpleNamespace(__file__=str(self.xml))}),
                    patch('builtins.input', return_value='WRITE identical rootfs_sig_a SAME-DISK')]
