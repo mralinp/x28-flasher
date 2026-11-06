@@ -32,6 +32,11 @@ class JobTests(unittest.TestCase):
         self.assertTrue(wait(lambda: job.code == 0))
         self.assertEqual(job.lines[-2:], ["Pick [1]: 2", "got 2"])
 
+    def test_the_tool_sees_a_terminal(self):  # the write tools refuse a stdin that is not one
+        job = gui.Job("t", [sys.executable, "-c", "import sys; print('tty', sys.stdin.isatty(), sys.stdout.isatty())"])
+        self.assertTrue(wait(lambda: job.code == 0))
+        self.assertEqual(job.lines, ["tty True True"])
+
     def test_carriage_return_redraws_the_tail(self):
         job = gui.Job("t", [sys.executable, "-c", "print('10 s\\r9 s\\r8 s', end='')"])
         self.assertTrue(wait(lambda: job.code == 0))
@@ -67,8 +72,15 @@ class CommandTests(unittest.TestCase):
     def test_only_known_actions_run(self):
         for bad in ("flash;rm", "restore", None):
             with self.assertRaises(ValueError):
-                gui.build_command(FakeFl, bad, {}, "DA")
-        self.assertEqual(gui.build_command(FakeFl, "flash", {}, "DA")[-2:], ["run", "flash"])
+                gui.build_command(FakeFl, bad, {"accept": True}, "DA")
+        self.assertEqual(gui.build_command(FakeFl, "build", {}, "DA")[-2:], ["run", "build"])
+
+    def test_writes_need_the_risk_accepted(self):
+        for action in gui.WRITE_ACTIONS:
+            for params in ({}, {"accept": False}, {"accept": "yes"}):
+                with self.assertRaises(ValueError):
+                    gui.build_command(FakeFl, action, params, "DA")
+            self.assertEqual(gui.build_command(FakeFl, action, {"accept": True}, "DA")[-2:], ["run", action])
 
     def test_frozen_runs_itself(self):
         fl = types.SimpleNamespace(FROZEN=True, RECOVERY=Path("/r"))

@@ -130,6 +130,15 @@ def stock_command(rootfs_b, out_dir, repo):
             "--tmpfs", "/w:rw,exec,size=1g", "-v", f"{rootfs_b}:/in/rootfs_b.bin:ro", "-v", f"{out_dir}:/out", "x28-firmware-tools:ubi", "sh", "-c", script]
 
 
+def stock_access_command(rootfs_b, key, out_dir, repo):
+    """stock_access.py in the tools container: the backup's rootfs_b plus the public key in, rootfs_b-access.bin and report.json out.
+    No network; the default capabilities stay because the extractor keeps file ownership (a root-owned overlay)."""
+    return ["docker", "run", "--rm", "--network", "none", "--security-opt", "no-new-privileges", "--tmpfs", "/tmp:rw,exec,size=1g",
+            "-v", f"{rootfs_b}:/in/rootfs_b.bin:ro", "-v", f"{key}:/in/router.pub:ro",
+            "-v", f"{Path(repo) / 'tools/build/stock_access.py'}:/opt/stock_access.py:ro", "-v", f"{out_dir}:/out",
+            "x28-firmware-tools:ubi", "python3", "/opt/stock_access.py", "--image", "/in/rootfs_b.bin", "--public-key", "/in/router.pub", "--output", "/out"]
+
+
 def local_commands(inputs, work, out, repo, python="python3"):
     """The three build steps, in order. inputs: stock, modern, key (files), extra_ipks, kmods, feed (stage extras, kmods dir, feed ipks)."""
     stage, profile = work / "stage", work / "profile"

@@ -6,10 +6,12 @@ read-only because the tools themselves refuse (#272).
 """
 import json
 import os
+import pty
 import secrets
 import signal
 import subprocess
 import sys
+import termios
 import threading
 import time
 import webbrowser
@@ -19,7 +21,8 @@ from urllib.parse import parse_qs, urlparse
 
 FROZEN = getattr(sys, "frozen", False)
 ASSETS = (Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parent) / "gui"
-WIZARD_ACTIONS = ("build", "test", "read", "flash")  # the wizard's own steps, run with plain prompts
+WIZARD_ACTIONS = ("build", "test", "read")  # read-only wizard steps, run with plain prompts
+WRITE_ACTIONS = ("flash", "access", "rescue")  # steps that write the board: refused unless the page sent the risk acceptance
 INFO_PREFIX = "X28INFO "
 
 
@@ -29,8 +32,17 @@ class Job:
     def __init__(self, kind, argv, env=None, on_line=None):
         self.id, self.kind, self.lines, self.tail, self.code = secrets.token_hex(4), kind, [], "", None
         self.cond, self.on_line = threading.Condition(), on_line
-        self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, bufsize=0,
-                                     env={**os.environ, "PYTHONUNBUFFERED": "1", **(env or {})})
+        # A terminal, not pipes: the guarded write tools refuse a stdin that is not a tty. The person typing in the page is the
+        # human at that terminal, and the terminal echoes what they type onto the prompt line.
+        self.fd, slave = pty.openpty()
+        attrs = termios.tcgetattr(slave)
+        attrs[1] &= ~termios.OPOST  # no \n to \r\n: the page splits lines itself
+        termios.tcsetattr(slave, termios.TCSANOW, attrs)
+        try:
+            self.proc = subprocess.Popen(argv, stdin=slave, stdout=slave, stderr=slave, close_fds=True,
+                                         env={**os.environ, "PYTHONUNBUFFERED": "1", "NO_COLOR": "1", "TERM": "dumb", **(env or {})})
+        finally:
+            os.close(slave)
         threading.Thread(target=self._pump, daemon=True).start()
 
     def feed(self, text):
@@ -51,7 +63,10 @@ class Job:
     def _pump(self):
         pending = b""
         while True:
-            chunk = os.read(self.proc.stdout.fileno(), 4096)
+            try:
+                chunk = os.read(self.fd, 4096)
+            except OSError:  # EIO: the child closed its end
+                break
             if not chunk:
                 break
             data, pending = pending + chunk, b""
@@ -64,6 +79,7 @@ class Job:
                     text, pending = data[:err.start].decode(), data[err.start:]
             self.feed(text)
         code = self.proc.wait()
+        os.close(self.fd)
         with self.cond:
             self.code = code
             self.cond.notify_all()
@@ -71,10 +87,8 @@ class Job:
     def send(self, text):
         if self.code is not None:
             return False
-        self.feed(text + "\n")  # a pipe does not echo; the answer joins the prompt line like on a terminal (before the write: the reply races it)
         try:
-            self.proc.stdin.write((text + "\n").encode())
-            self.proc.stdin.flush()
+            os.write(self.fd, (text + "\n").encode())  # the terminal echoes it onto the prompt line
         except OSError:
             return False
         return True
@@ -102,7 +116,9 @@ def build_command(fl, action, params, loader):
         if not out:
             raise ValueError("choose a folder for the backup")
         return script_cmd(fl, fl.RECOVERY / "usb_backup.py", ["--out", out, "--loader", loader] + ([] if params.get("twice", True) else ["--no-verify"]))
-    if action in WIZARD_ACTIONS:
+    if action in WRITE_ACTIONS and params.get("accept") is not True:
+        raise ValueError("accept the risk first: this writes the board")
+    if action in WIZARD_ACTIONS + WRITE_ACTIONS:
         return action_cmd(fl, action)
     raise ValueError(f"unknown action {action!r}")
 

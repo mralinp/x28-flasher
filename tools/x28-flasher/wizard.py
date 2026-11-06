@@ -378,7 +378,90 @@ def flash(fl, ui, cfg, preset=None):
     return code
 
 
-ACTIONS = {"backup": backup, "build": build, "auto": autopilot, "test": test_readonly, "read": read_partition, "uart": watch_uart, "flash": flash}
+def b_runs(probe, mode):
+    """Finished rootfs_b runs of one mode, newest first; slot_b_entry checks the receipt itself before it builds on one."""
+    return sorted((p.parent for p in probe.glob(f"slot-rootfs_b-{mode}-*/receipt.json")), key=lambda d: d.stat().st_mtime, reverse=True)
+
+
+def flash_b(fl, ui, cfg, mode, candidate):
+    """identical | write | restore of the rootfs_b overlay tail through slot_b_entry.py (every guard and the typed phrase stay)."""
+    import argparse
+    from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA
+    if fl.FROZEN:
+        print("  " + warn("This build is read-only. Flash from a source checkout until the build-time equality gate exists (#272)."))
+        return 0
+    backup = ask_path(ui, cfg, "backup", "Folder with a FRESH verified backup of this unit (taken just now, unit idle)", DEFAULT_BACKUP, True)
+    loader = ask_path(ui, cfg, "loader", "Vendor download agent file (DA_BR.bin)", VENDOR_DA, False)
+    prior = resume = None
+    wanted = {"write": ("identical", "Rehearsal to build on"), "restore": ("write", "Write run to undo")}.get(mode)
+    if wanted:
+        runs = b_runs(PRIVATE / "usb-probe", wanted[0])
+        if not runs:
+            print("  " + bad(f"No {wanted[0]} run of rootfs_b found. Run the {wanted[0]} first."))
+            return 1
+        chosen = ui.select(wanted[1], [(r.name, str(r)) for r in runs])
+        prior, resume = (chosen, None) if mode == "write" else (None, chosen)
+    no_uart = ui.confirm("No UART adapter? Then there is no boot log if the image fails; the way back is a USB restore from your backup.", False)
+    print(f"\n  {mode}: {candidate}")
+    if not ui.confirm("Continue to the UART and the typed confirmation?", True):
+        return 0
+    args = argparse.Namespace(mode=mode, candidate_dir=str(candidate), backup=backup, loader=loader, backup_copy=None, no_uart=no_uart,
+                              prior_identical=prior, resume=resume)
+    code = fl.cmd_flash_b(args, ui)
+    print("  " + (good("Done.") if code == 0 else bad(f"Stopped (exit {code}). The run folder above keeps the logs; nothing was retried.")))
+    return code
+
+
+def access(fl, ui, cfg):
+    """Key-only SSH on the stock unit (slot B, #5): build the candidate offline in the tools container, then rehearse and write it."""
+    import images
+    import shutil
+    import subprocess
+    from common import DEFAULT_BACKUP, PRIVATE, REPO
+    if fl.FROZEN:
+        print("  " + warn("This build is read-only. Run from a source checkout to flash (#272)."))
+        return 0
+    last = cfg.get("access_candidate")
+    fresh = ui.select("Candidate image", [("Build a new one from my backup and an SSH key", "new")] + ([(f"Use the last one: {Path(last).name}", "last")] if last and Path(last).is_dir() else []))
+    if fresh == "new":
+        if not shutil.which("docker") or subprocess.call(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL):
+            print("  " + bad("Docker is not installed or not running: the candidate is built in a container."))
+            return 1
+        backup = Path(ask_path(ui, cfg, "backup", "Folder with a FRESH verified backup of this unit", DEFAULT_BACKUP, True))
+        rootfs_b = next(iter(sorted(backup.glob("images/*-rootfs_b.bin"))), None)
+        if not rootfs_b:
+            print("  " + bad(f"no rootfs_b image in {backup}/images"))
+            return 1
+        key = choose_key(ui, cfg)
+        out = PRIVATE / "build" / f"stock-access-{images.stamp()}"
+        out.mkdir(parents=True)
+        print("  " + paint("Offline: nothing touches the router while the candidate is built.", "dim"))
+        if subprocess.call(["docker", "build", "-q", "-t", "x28-firmware-tools:ubi", "-f", str(REPO / "tools/firmware/Dockerfile"), str(REPO / "tools/firmware")], stdout=subprocess.DEVNULL) \
+                or subprocess.call(images.stock_access_command(rootfs_b, key, out, REPO)) \
+                or not (out / "rootfs_b-access.bin").is_file() or not (out / "report.json").is_file():
+            print("  " + bad(f"Could not build the candidate. Folder kept: {out}"))
+            return 1
+        cfg.set("access_candidate", str(out))
+        last = str(out)
+        print("  " + good(f"Candidate built: {out}"))
+    mode = ui.select("Which run?", [("Rehearsal: rewrite the same bytes, read back, compare (identical)", "identical"),
+                                    ("Write the candidate (needs a verified rehearsal)", "write")])
+    return flash_b(fl, ui, cfg, mode, last)
+
+
+def rescue(fl, ui, cfg):
+    """Undo a finished rootfs_b write: restore the original overlay tail from the backup (not single-use; each try is a manual run)."""
+    candidate = cfg.get("access_candidate")
+    if not candidate or not Path(candidate).is_dir():
+        candidate = ui.text("Folder of the candidate the write used (stock_access output)").strip()
+        if not Path(candidate).is_dir():
+            print("  " + bad(f"not found: {candidate}"))
+            return 1
+    return flash_b(fl, ui, cfg, "restore", candidate)
+
+
+ACTIONS = {"backup": backup, "build": build, "auto": autopilot, "test": test_readonly, "read": read_partition, "uart": watch_uart, "flash": flash,
+           "access": access, "rescue": rescue}
 
 
 def run_action(fl, action):

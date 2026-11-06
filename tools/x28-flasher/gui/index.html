@@ -104,8 +104,8 @@ const MENU = [
   ["read", "Read & verify", "Read one partition from the board and compare it with your backup. Writes nothing."],
   ["test", "Self-test", "Check setup, the patched library and a real read. Writes nothing."],
   ["uart", "UART monitor", "Capture the serial console to a log. A flash needs it unless you have no adapter."],
-  ["rescue", "Rescue modem", "Not in the page yet."],
-  ["access", "SSH / Telnet", "Not in the page yet."],
+  ["access", "Stock SSH access", "Key-only SSH on the stock firmware (slot B). Builds the image from your backup, rehearses, then writes. No Telnet."],
+  ["rescue", "Rescue (slot B)", "Undo a stock SSH write: put the original slot B tail back from your backup."],
 ];
 const S = { screen: "home", st: null, job: null, es: null, pw: null, uartTimer: null };
 
@@ -224,8 +224,7 @@ function viewHome() {
   const i = S.st && S.st.info;
   return `${head("What do you want to do?", i ? "The board has been read. Back up before you change anything." : "Start with Connect device, then take a backup.")}
   <div class="grid3">${MENU.map(([id, label, desc]) => {
-    const off = id === "rescue" || id === "access";
-    return `<button class="card ${id === "backup" ? "start" : ""}" data-go="${id}"><span style="color:${off ? "#6b7385" : "var(--acc)"}">${svg(ICON[id], "currentColor", 24)}</span><b style="font-size:15px">${label}</b><span class="mut" style="font-size:12.5px;line-height:1.5">${desc}</span></button>`;
+    return `<button class="card ${id === "backup" ? "start" : ""}" data-go="${id}"><span style="color:var(--acc)">${svg(ICON[id], "currentColor", 24)}</span><b style="font-size:15px">${label}</b><span class="mut" style="font-size:12.5px;line-height:1.5">${desc}</span></button>`;
   }).join("")}</div>`;
 }
 
@@ -290,16 +289,27 @@ function wizardRunner(title, sub, action, label, extra = "") {
   <div><button class="primary" data-act="run" data-run="${action}" ${busy() ? "disabled" : ""}>${label}</button></div>
   ${S.job && S.job.kind === action ? consoleHtml() : ""}`;
 }
-function viewFlash() {
-  const st = S.st;
-  if (st.frozen) return `${head("Flash OpenWrt", "")}<div class="warn">This build is read-only. Flashing is refused until the build-time equality gate exists (#272). Run x28-flasher from a source checkout to flash.</div>`;
+const RISK = {
+  flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit", "I will keep the modem powered and the USB cable connected until it finishes"]],
+  access: ["Stock SSH access", "Builds a key-only SSH candidate for slot B from your backup, rehearses it, then writes it. Only the overlay tail of rootfs_b changes.", ["The backup was taken just now, with the unit idle", "I will keep the modem powered and the USB cable connected until it finishes"]],
+  rescue: ["Rescue (slot B)", "Restores the original slot B overlay tail from your backup after a write. Each try is a manual run.", ["I have the backup this unit was written from", "I will keep the modem powered and the USB cable connected until it finishes"]],
+};
+function viewWrite(action) {
+  const st = S.st, [title, sub, items] = RISK[action];
+  if (st.frozen) return `${head(title, "")}<div class="warn">This build is read-only. Writing is refused until the build-time equality gate exists (#272). Run x28-flasher from a source checkout to write.</div>`;
   const uart = st.uart && st.uart.running;
-  return wizardRunner("Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write. You answer each question below; the typed confirmation phrase is yours to type.", "flash", "Start flashing",
-    `<div class="box" style="padding:18px;display:grid;gap:10px;max-width:760px">
-      <div>${uart ? "✓" : "○"} UART monitor ${uart ? "running, its log is used" : "is off. A flash needs the log unless you have no adapter."}</div>
-      <div>${st.images.length ? "✓" : "○"} Image: ${st.images.length ? esc(st.images[0]) : "none yet. Use Build image first."}</div>
-      <div class="mut">Backup: <span class="mono">${esc(st.backup_dir)}</span></div>
-    </div><div class="warn" style="max-width:760px">Writes the board. Keep it powered and the USB cable connected until it finishes. Stop does what Ctrl-C does; it cannot undo a write.</div>`);
+  const started = S.job && S.job.kind === action;
+  return `${head(title, sub)}
+  ${started ? "" : `<div class="box" style="padding:18px;display:grid;gap:12px;max-width:760px">
+    <b>Before you start</b>
+    <div class="mut">${uart ? "✓ UART monitor is running; its log is used." : "UART monitor is off. A write needs its log unless you tell the tool you have no adapter."}</div>
+    ${items.map((t) => `<label class="chk"><input class="sw risk" type="checkbox"><span>${esc(t)}</span></label>`).join("")}
+    <label class="chk"><input class="sw risk" type="checkbox"><span>I understand this can leave the modem unbootable, and that Stop cannot undo a write</span></label>
+    <label class="chk"><input class="sw risk" type="checkbox"><span>I will type the confirmation phrase myself when the tool asks for it</span></label>
+  </div>
+  <div class="warn" style="max-width:760px">The way back from a failed write is a USB restore from your backup. You answer each question below; the tool still asks for its exact phrase.</div>
+  <div><button class="primary" id="accept" data-act="write" data-run="${action}" disabled>I accept the risk, start</button></div>`}
+  ${started ? consoleHtml() : ""}`;
 }
 function viewUart() {
   const st = S.st, u = st.uart && st.uart.running ? st.uart : null;
@@ -324,17 +334,14 @@ async function pollUart() {
     const s = $("#u-status"); if (s) s.textContent = d.status && d.status.running ? `Listening on ${d.status.port} @ ${d.status.baud} · ${d.status.bytes} bytes → ${d.status.path}` : "UART monitoring is off.";
   } catch (e) { /* page closed or server stopped */ }
 }
-function viewSoon(title) {
-  return `${head(title, "")}<div class="note" style="max-width:640px">Not available in the page yet. The guarded restore and slot-B tools (<span class="mono">restore_entry.py</span>, <span class="mono">slot_b_entry.py</span>) still run from the terminal; see the firmware repo's <span class="mono">docs/RECOVERY.md</span>.</div>`;
-}
 function viewWizard() { return S.pw ? powerWizard() : `${head("Connect device", "")}${S.job ? consoleHtml() : ""}<div><button class="btn" data-go="home">Back</button></div>`; }
 
 function drawView() {
-  const v = { home: viewHome, wizard: viewWizard, backup: viewBackup, flash: viewFlash, uart: viewUart,
+  const v = { home: viewHome, wizard: viewWizard, backup: viewBackup, uart: viewUart,
+    flash: () => viewWrite("flash"), access: () => viewWrite("access"), rescue: () => viewWrite("rescue"),
     build: () => wizardRunner("Build image", "Download the newest release image, or build one here from your backup and vendor files (needs Docker and a source checkout). The checksum is verified; Flash still asks for the image hash.", "build", "Build image"),
     read: () => wizardRunner("Read & verify", "Reads one partition by name and compares it with your backup. Read-only.", "read", "Read a partition"),
-    test: () => wizardRunner("Self-test", "Serial ports, backup, download agent and the patched library. Optionally reads lk_b and compares it. Read-only.", "test", "Run self-test"),
-    rescue: () => viewSoon("Rescue modem"), access: () => viewSoon("SSH / Telnet") }[S.screen];
+    test: () => wizardRunner("Self-test", "Serial ports, backup, download agent and the patched library. Optionally reads lk_b and compares it. Read-only.", "test", "Run self-test") }[S.screen];
   $("#view").innerHTML = v();
   if (S.job && $("#console")) drawConsole();
   const next = $("#pwgo"); if (next) next.focus();
@@ -352,12 +359,22 @@ document.addEventListener("click", async (e) => {
   if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
   if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader").value, twice: $("#bk-twice").checked });
   if (a === "run") { S.job = null; if (await start(t.dataset.run)) drawView(); return; }
+  if (a === "write") {
+    if (![...document.querySelectorAll(".risk")].every((c) => c.checked)) return;  // the server refuses without accept too
+    S.job = null;
+    if (await start(t.dataset.run, { accept: true })) drawView();
+    return;
+  }
   if (a === "stop") { const j = S.job; await api(`/api/job/${j.id}/stop`, { force: false }); return; }
   if (a === "uart") {
     const on = !(S.st.uart && S.st.uart.running);
     try { await api("/api/uart", { on, port: $("#u-port").value, baud: Number($("#u-baud").value) }); } catch (er) { alert(er.message); }
     await refresh(); drawView();
   }
+});
+document.addEventListener("change", (e) => {
+  if (!e.target.classList.contains("risk")) return;
+  $("#accept").disabled = ![...document.querySelectorAll(".risk")].every((c) => c.checked);
 });
 document.addEventListener("submit", async (e) => {
   e.preventDefault();

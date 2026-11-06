@@ -141,6 +141,16 @@ def flash_cmd(args, uart, backup_copy):
     return cmd
 
 
+def flash_b_cmd(args, uart, backup_copy):
+    """slot_b_entry.py: the rootfs_b overlay tail (stock SSH access). write needs a rehearsal, restore a finished write run."""
+    cmd = [args.mode, "--write", *tool_paths(args), "--candidate-dir", args.candidate_dir, "--backup-copy", str(backup_copy)]
+    cmd += ["--no-uart"] if getattr(args, "no_uart", False) else ["--uart-log", str(uart)]
+    for flag in ("prior_identical", "resume"):
+        if getattr(args, flag, None):
+            cmd += ["--" + flag.replace("_", "-"), getattr(args, flag)]
+    return cmd
+
+
 def run_tool(script, argv):
     """The guarded tools run in this process when frozen (no second interpreter), else under the mtkclient venv."""
     if FROZEN:
@@ -165,7 +175,11 @@ def tool_paths(args):
     return out
 
 
-def cmd_flash(args, ui=None):
+def cmd_flash_b(args, ui=None):
+    return cmd_flash(args, ui, "slot_b_entry.py", flash_b_cmd)
+
+
+def cmd_flash(args, ui=None, tool="slot_entry.py", build_cmd=None):
     if FROZEN:  # auditor gate (#272): lifted by the PR that asserts the compiled library and tool sources equal the bundled copies
         sys.exit("frozen builds are read-only until the build-time equality gate exists (#272); flash from a source checkout")
     loader = Path(args.loader) if args.loader else VENDOR_DA
@@ -180,7 +194,7 @@ def cmd_flash(args, ui=None):
     print("\nNext: the tool shows the exact phrase to type (you type it yourself), then asks you to unplug the\n"
           "router for 10 s or more and plug it back in with no buttons. No retry, no automatic reboot.\n")
     try:
-        return run_tool("slot_entry.py", flash_cmd(args, uart, copy))
+        return run_tool(tool, (build_cmd or flash_cmd)(args, uart, copy))
     finally:
         if uart:
             print(f"UART log: {uart}")
@@ -255,7 +269,7 @@ def main():
     sub.add_parser("gui").set_defaults(fn=lambda a: __import__("gui").serve(sys.modules[__name__]))
     sub.add_parser("wizard").set_defaults(fn=lambda a: __import__("wizard").run(sys.modules[__name__]))
     ru = sub.add_parser("run")  # one wizard step with plain prompts; the page runs these and relays the questions
-    ru.add_argument("action", choices=("build", "test", "read", "flash"))
+    ru.add_argument("action", choices=("build", "test", "read", "flash", "access", "rescue"))
     ru.set_defaults(fn=lambda a: __import__("wizard").run_action(sys.modules[__name__], a.action))
     sub.add_parser("ports").set_defaults(fn=cmd_ports)
     sub.add_parser("uart").set_defaults(fn=cmd_uart)

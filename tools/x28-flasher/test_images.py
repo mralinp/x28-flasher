@@ -58,6 +58,16 @@ class DownloadTests(unittest.TestCase):
             images.download(Path(tempfile.mkdtemp()), fetch=lambda u: b'[{"tag_name": "v1", "assets": []}]')
 
 
+class StockAccessTests(unittest.TestCase):
+    def test_container_is_offline_and_runs_the_repo_script_on_read_only_inputs(self):
+        cmd = images.stock_access_command(Path("/b/rootfs_b.bin"), Path("/k/router.pub"), Path("/out"), Path("/repo"))
+        self.assertEqual(cmd[cmd.index("--network") + 1], "none")
+        self.assertIn("/b/rootfs_b.bin:/in/rootfs_b.bin:ro", cmd)
+        self.assertIn("/k/router.pub:/in/router.pub:ro", cmd)
+        self.assertIn("/repo/tools/build/stock_access.py:/opt/stock_access.py:ro", cmd)
+        self.assertEqual(cmd[-8:], ["python3", "/opt/stock_access.py", "--image", "/in/rootfs_b.bin", "--public-key", "/in/router.pub", "--output", "/out"])
+
+
 class LocalTests(unittest.TestCase):
     def test_commands_run_in_pipeline_order_and_chain_outputs(self):
         inputs = {"stock": "s.tgz", "modern": "m.tgz", "key": "k.pub", "kmods": "km", "extra_ipks": ["a.ipk"], "feed": ["f.ipk"]}
