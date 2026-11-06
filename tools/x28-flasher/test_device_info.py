@@ -25,6 +25,10 @@ class IdentityTests(unittest.TestCase):
             {"kind": "mac", "value": "aa:bb:cc:00:11:22"}, {"kind": "imei", "value": "123456789012345"},
             {"kind": "serial", "value": "A12345678901234567"}])
 
+    def test_a_value_stored_twice_is_listed_once(self):
+        data = page(b"A12345678901234567") + page(b"A12345678901234567")
+        self.assertEqual(device_info.identity_values(data), [{"kind": "serial", "value": "A12345678901234567"}])
+
     def test_erased_and_key_pages_give_nothing(self):
         self.assertEqual(device_info.identity_values(b"\xff" * 0x3000 + page(b"imei", b"\x00" * 10)), [])
 

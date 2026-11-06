@@ -38,8 +38,9 @@ def identity_values(data):
     for off in range(0, len(data), PAGE):
         text = re.match(rb"[ -~]+", data[off:off + PAGE])
         for kind, shape in KINDS:
-            if text and shape.fullmatch(text.group()):
-                out.append({"kind": kind, "value": text.group().decode()})
+            item = {"kind": kind, "value": text.group().decode()} if text and shape.fullmatch(text.group()) else None
+            if item and item not in out:  # the unit stores some values twice
+                out.append(item)
     return out
 
 
