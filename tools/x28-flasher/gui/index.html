@@ -119,6 +119,10 @@ async function api(path, body) {
 }
 async function refresh() { S.st = await api("/api/state"); drawSide(); }
 const busy = () => !!(S.job && S.job.code === null);
+/* The screen that shows a running job: the job's own view (Connect is "wizard"; Setup output sits on the home screen). */
+const jobScreen = (kind) => kind === "identify" ? "wizard" : kind === "setup" || kind === "libusb" ? "home" : kind;
+/* Actions that start something: refused while a job runs (the server holds one job at a time). */
+const STARTS = ["connect", "backup", "run", "write", "confirm-write", "setup", "libusb", "pw-next"];  // UART is not a job: it runs alongside one
 
 /* ---------- sidebar ---------- */
 function mb(n) { return n ? Math.round(n / 1048576) + " MiB" : "?"; }
@@ -228,7 +232,8 @@ async function start(action, params = {}) {
 
 /* ---------- screens ---------- */
 function go(id) {
-  S.screen = id; S.pw = null;
+  S.screen = id;
+  if (!(S.pw && S.pw.step === 3 && busy())) S.pw = null;  // the power wizard keeps its console while its job runs
   clearInterval(S.uartTimer);
   drawSide(); drawView();
 }
@@ -379,7 +384,9 @@ function drawView() {
     build: () => wizardRunner("Build image", "Download the newest release image, or build one here from your backup and vendor files (needs Docker and a source checkout). The checksum is verified; Flash still asks for the image hash.", "build", "Build image"),
     read: () => wizardRunner("Read & verify", "Reads one partition by name and compares it with your backup. Read-only.", "read", "Read a partition"),
     test: () => wizardRunner("Self-test", "Serial ports, backup, download agent and the patched library. Optionally reads lk_b and compares it. Read-only.", "test", "Run self-test") }[S.screen];
-  $("#view").innerHTML = v();
+  const away = busy() && S.screen !== jobScreen(S.job.kind);
+  $("#view").innerHTML = (away ? `<div class="warn" style="display:flex;align-items:center;gap:12px"><span style="flex:1">A job is running (${esc(S.job.kind)}). Other actions wait until it finishes.</span><button class="btn" data-go="${jobScreen(S.job.kind)}">Show it</button></div>` : "") + v();
+  if (away) document.querySelectorAll(STARTS.map((a) => `#view [data-act=${a}]`).join(",")).forEach((b) => { b.disabled = true; });
   if (S.job && $("#console")) drawConsole();
   const next = $("#pwgo"); if (next) next.focus();
 }
@@ -391,6 +398,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.go) return go(t.dataset.go);
   if (t.dataset.send !== undefined) return api(`/api/job/${S.job.id}/input`, { text: t.dataset.send });
   const a = t.dataset.act;
+  if (busy() && STARTS.includes(a)) return;
   if (a === "connect") { S.screen = "wizard"; return openPower("identify", {}); }
   if (a === "quit") {
     try { await api("/api/quit", {}); } catch (er) { return alert(er.message); }
@@ -441,7 +449,12 @@ document.addEventListener("submit", async (e) => {
   const el = $("#answer");
   if (el && S.job) { const text = el.value; el.value = ""; await api(`/api/job/${S.job.id}/input`, { text }); }
 });
-(async () => { await refresh(); drawView(); })();
+(async () => {
+  await refresh();
+  const j = S.st.job;  // the server holds the job: a reloaded page picks a running one up again
+  if (j && j.running) { S.screen = jobScreen(j.kind); watch(j.id, j.kind); }
+  drawView();
+})();
 </script>
 </body>
 </html>
