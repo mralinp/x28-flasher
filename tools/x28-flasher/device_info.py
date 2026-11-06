@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Read-only: reach the download agent and report what the board is (the GUI's Connect step).
 
-Same handshake as read_by_name.py (watchdog untouched), then READ-PARTITION proinfo and READ-PARTITION-TABLE. Nothing is
+Same handshake as read_by_name.py (watchdog untouched), then READ-PARTITION productinfo and READ-PARTITION-TABLE. Nothing is
 written. Prints one `X28INFO {json}` line: hwcode, meid, flash type and size, security flags, the partition table, and the
-printable strings in proinfo (where the unit's identity lives; the page shows them rather than guess which one is the serial).
+unit's identity values from `productinfo` (MAC, IMEI, serial-like ids; found by their shape, since the keys sit on other pages).
 
     device_info.py --loader DA_BR.bin
 """
@@ -22,7 +22,8 @@ ensure_venv()
 import read_by_name  # noqa: E402
 
 ROW = re.compile(r"<name>(.*?)</name><start>(.*?)</start><size>(.*?)</size>")
-STRING = re.compile(rb"[ -~]{6,40}")
+PAGE = 0x1000
+KINDS = (("mac", re.compile(rb"[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}")), ("imei", re.compile(rb"\d{15}")), ("serial", re.compile(rb"[A-Za-z]\d{17}")))
 
 
 def attr(config, name):
@@ -30,14 +31,16 @@ def attr(config, name):
     return value.hex() if isinstance(value, (bytes, bytearray)) else value
 
 
-def identity_strings(data, limit=12):
-    """Distinct printable runs of the first 4 KiB, in order."""
-    seen = []
-    for m in STRING.finditer(data[:4096]):
-        text = m.group().decode()
-        if text not in seen:
-            seen.append(text)
-    return seen[:limit]
+def identity_values(data):
+    """productinfo keeps one value per 4 KiB page, starting at byte 0 (the key pages start with the name later in the page).
+    A value is told apart by its shape: MAC, 15-digit IMEI, letter plus 17 digits (serial-like)."""
+    out = []
+    for off in range(0, len(data), PAGE):
+        text = re.match(rb"[ -~]+", data[off:off + PAGE])
+        for kind, shape in KINDS:
+            if text and shape.fullmatch(text.group()):
+                out.append({"kind": kind, "value": text.group().decode()})
+    return out
 
 
 def main():
@@ -51,7 +54,7 @@ def main():
     da = mtk.daloader.da
     info = {}
     try:
-        proinfo = read_by_name.read_partition(da, "proinfo")  # first: after a refused command this DA stops answering
+        productinfo = read_by_name.read_partition(da, "productinfo")  # first: after a refused command this DA stops answering
         table, _ = da.read_partition_table()
         text = (table.decode(errors="replace") if isinstance(table, bytes) else table) if table else ""
         cfg = mtk.config
@@ -59,7 +62,7 @@ def main():
                 "flashsize": attr(cfg, "flashsize"), "flashmode": attr(cfg, "flashmode"),
                 "target_config": getattr(cfg, "target_config", None) if isinstance(getattr(cfg, "target_config", None), dict) else None,
                 "table": [{"name": n, "start": s, "size": z} for n, s, z in ROW.findall(text)],
-                "proinfo_strings": identity_strings(proinfo) if proinfo else []}
+                "identity": identity_values(productinfo) if productinfo else []}
     finally:
         print("cycle the modem's power to boot it normally", flush=True)
         mtk.port.close()

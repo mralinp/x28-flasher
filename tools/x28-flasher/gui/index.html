@@ -120,6 +120,15 @@ const busy = () => !!(S.job && S.job.code === null);
 
 /* ---------- sidebar ---------- */
 function mb(n) { return n ? Math.round(n / 1048576) + " MiB" : "?"; }
+const IDLABEL = { mac: "MAC", imei: "IMEI", serial: "Serial no." };
+function identityRows(list) {  // productinfo values, told apart by shape; two serial-like ids are both shown
+  const seen = {};
+  return list.map(({ kind, value }) => {
+    const n = (seen[kind] = (seen[kind] || 0) + 1);
+    const label = IDLABEL[kind] + (n > 1 ? " " + n : "");
+    return `<dt class="mut">${label}</dt><dd class="mono" style="font-size:11.5px">${esc(value)}</dd>`;
+  }).join("");
+}
 function drawSide() {
   const i = S.st && S.st.info;
   let h;
@@ -132,9 +141,9 @@ function drawSide() {
       <dt class="mut">Flash</dt><dd>${esc(i.flashtype || "?")} · ${mb(i.flashsize)}</dd>
       <dt class="mut">Mode</dt><dd>${esc(i.flashmode || "?")}</dd>
       <dt class="mut">Partitions</dt><dd>${(i.table || []).length}</dd>
+      ${identityRows(i.identity || [])}
     </dl>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${["sbc", "sla", "daa"].map((k) => `<span class="chip ${tc[k] ? "on" : ""}">${k.toUpperCase()} ${tc[k] ? "on" : "off"}</span>`).join("")}</div>
-    ${(i.proinfo_strings || []).length ? `<details><summary class="mut" style="cursor:pointer">Identity strings (proinfo)</summary><pre style="margin-top:8px">${esc(i.proinfo_strings.join("\n"))}</pre></details>` : ""}
     <p class="mut" style="font-size:12px">The board is waiting in download mode. Power-cycle it to boot normally.</p>
     <button class="btn" data-act="connect" ${busy() ? "disabled" : ""} style="align-self:flex-start">Read again</button>`;
   } else {
