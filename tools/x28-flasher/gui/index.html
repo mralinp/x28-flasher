@@ -229,9 +229,26 @@ function go(id) {
 }
 function head(t, s) { return `<div><h1>${t}</h1><p class="lead">${s}</p></div>`; }
 
+function setupPanel() {
+  const st = S.st, s = st.setup;
+  if (st.frozen || !s) return "";
+  const ready = s.mtkclient && s.libusb && !s.restart && st.loader.ok;
+  const row = (ok, label, action) => `<div style="display:flex;align-items:center;gap:12px;min-height:34px"><span style="color:${ok ? "var(--ok)" : "var(--warn)"}">${ok ? "✓" : "○"}</span><span style="flex:1">${label}</span>${action || ""}</div>`;
+  const btn = (act, text, dis) => `<button class="btn" data-act="${act}" ${dis || busy() ? "disabled" : ""}>${text}</button>`;
+  const show = S.job && (S.job.kind === "setup" || S.job.kind === "libusb");
+  if (ready && !show) return "";
+  return `<div class="box" style="padding:18px;display:grid;gap:6px;max-width:760px"><b>Setup</b>
+    ${row(s.python, s.python ? "Python 3.10 or newer" : "Python 3.10 or newer is missing. Install it from python.org, then restart this page.")}
+    ${row(s.libusb, "libusb (talks to the modem over USB)", s.libusb ? "" : (s.brew ? btn("libusb", "Install") : '<span class="mut">needs Homebrew: brew.sh</span>'))}
+    ${row(s.mtkclient, "mtkclient, pinned and patched for the X28", s.mtkclient ? "" : btn("setup", "Install", !s.python || !s.libusb))}
+    ${s.restart ? row(false, "Installed. Restart the page to use it.", btn("restart", "Restart now")) : ""}
+    ${row(st.loader.ok, st.loader.ok ? `Download agent: <span class="mono mut">${esc(st.loader.path)}</span>` : "Download agent file (DA_BR.bin): not found. It is not shipped with the tool.", btn("loader", st.loader.ok ? "Change…" : "Choose file…"))}
+    ${show ? consoleHtml() : ""}</div>`;
+}
 function viewHome() {
   const i = S.st && S.st.info;
   return `${head("What do you want to do?", i ? "The board has been read. Back up before you change anything." : "Start with Connect device, then take a backup.")}
+  ${setupPanel()}
   <div class="grid3">${MENU.map(([id, label, desc]) => {
     return `<button class="card ${id === "backup" ? "start" : ""}" data-go="${id}"><span style="color:var(--acc)">${svg(ICON[id], "currentColor", 24)}</span><b style="font-size:15px">${label}</b><span class="mut" style="font-size:12.5px;line-height:1.5">${desc}</span></button>`;
   }).join("")}</div>`;
@@ -280,9 +297,9 @@ function viewBackup() {
   if (S.pw) return powerWizard();
   return `${head("Backup", "Reads every partition twice and keeps it only if both reads agree. Nothing is written to the board. The same folder resumes an unfinished backup.")}
   <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
-    <label class="f"><span class="lbl">Save the backup in</span><input type="text" id="bk-out" value="${esc(st.backup_out)}"></label>
-    <label class="f"><span class="lbl">Vendor download agent (DA_BR.bin)</span><input type="text" id="bk-loader" value="${esc(st.loader.path)}"></label>
-    ${st.loader.ok ? "" : `<div class="warn">That file does not exist yet. The download agent is not shipped; point this at your copy.</div>`}
+    <label class="f"><span class="lbl">Save the backup in</span><span style="display:flex;gap:8px"><input type="text" id="bk-out" value="${esc(st.backup_out)}"><button type="button" class="btn" data-act="browse" data-target="bk-out" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
+    <label class="f"><span class="lbl">Vendor download agent (DA_BR.bin)</span><span style="display:flex;gap:8px"><input type="text" id="bk-loader" value="${esc(st.loader.path)}"><button type="button" class="btn" data-act="browse" data-target="bk-loader" data-kind="file" style="flex:none;height:40px">Browse…</button></span></label>
+    ${st.loader.ok ? "" : `<div class="warn">That file does not exist yet. The download agent is not shipped; choose your copy.</div>`}
     <label class="chk"><input class="sw" type="checkbox" id="bk-twice" checked><span>Read every partition twice (about twice as long, recommended)</span></label>
     <div><button class="primary" data-act="backup" ${busy() ? "disabled" : ""}>Start backup</button></div>
   </div>
@@ -364,6 +381,26 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.send !== undefined) return api(`/api/job/${S.job.id}/input`, { text: t.dataset.send });
   const a = t.dataset.act;
   if (a === "connect") { S.screen = "wizard"; return openPower("identify", {}); }
+  if (a === "setup" || a === "libusb") { S.job = null; if (await start(a)) drawView(); return; }
+  if (a === "restart") {
+    try { await api("/api/restart", {}); } catch (er) { return alert(er.message); }
+    t.disabled = true; t.textContent = "Restarting…";
+    for (let n = 0; n < 60; n++) {  // same port and token: wait for it to answer, then reload
+      await new Promise((r) => setTimeout(r, 1000));
+      try { await api("/api/state"); return location.reload(); } catch (er) { /* still starting */ }
+    }
+    return;
+  }
+  if (a === "browse" || a === "loader") {
+    const kind = a === "loader" ? "file" : t.dataset.kind;
+    try {
+      const { path } = await api("/api/pick", { kind, prompt: kind === "file" ? "Choose the download agent (DA_BR.bin)" : "Choose a folder" });
+      if (!path) return;
+      if (a === "loader") { await api("/api/loader", { path }); await refresh(); return drawView(); }
+      $("#" + t.dataset.target).value = path;
+    } catch (er) { alert(er.message); }
+    return;
+  }
   if (a === "pw-next") return pwNext();
   if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
   if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader").value, twice: $("#bk-twice").checked });

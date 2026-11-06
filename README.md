@@ -18,9 +18,6 @@ Licence: GPL-2.0-only.
 
 ## Using it
 
-```
-python3 tools/recovery/setup_mtkclient.py     # once: the pinned, patched mtkclient
-python3 tools/x28-flasher/x28_flasher.py      # opens the page in your browser (x28_flasher.py wizard = the terminal menu)
-```
+Double-click `Start X28 Flasher.command` (or run `python3 tools/x28-flasher/x28_flasher.py`). The page opens in your browser. On a fresh checkout its Setup box installs libusb (needs Homebrew) and the pinned, patched mtkclient with one click each, restarts itself, and lets you choose your download agent file. Needs Python 3.10 or newer; `x28_flasher.py wizard` is the terminal menu.
 
 The page walks you through Connect (power off, 10 s, power on), then Backup, Build image, Flash OpenWrt, Read & verify, Self-test, UART monitor, Stock SSH access and Rescue (slot B). Every step runs the guarded tools; a step that writes needs the risk checklist ticked and the tool's own typed phrase. Only this computer's browser can reach the page. The packaged binary is read-only (#272). Telnet is not offered: `stock_access.py` sets up key-only SSH.

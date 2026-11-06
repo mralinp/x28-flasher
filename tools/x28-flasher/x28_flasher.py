@@ -27,7 +27,8 @@ sys.path.insert(0, str(RECOVERY))
 from common import MTK_HOME, PRIVATE, VENDOR_DA, ensure_venv  # noqa: E402
 
 VENV_PY = MTK_HOME / "venv" / "bin" / "python"
-if "--selftest" not in sys.argv:
+BARE = sys.argv[1:] in ([], ["gui"])
+if "--selftest" not in sys.argv and not (BARE and not VENV_PY.exists()):  # the page starts without mtkclient so it can install it
     ensure_venv()
 
 from wizard import Ui, bad, good, paint, pick, printable_share, warn  # noqa: E402

@@ -4,10 +4,13 @@ Nothing here writes flash. Every device action is one of the existing tools run 
 the typed confirmation phrase) reach the page as prompts and only the person at the page answers them. Frozen builds stay
 read-only because the tools themselves refuse (#272).
 """
+import ctypes.util
+import glob
 import json
 import os
 import pty
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -107,8 +110,48 @@ def action_cmd(fl, action):
     return [sys.executable, "run", action] if fl.FROZEN else [str(fl.VENV_PY), str(Path(fl.__file__).resolve()), "run", action]
 
 
+def find_python():
+    """A Python >= 3.10 for the mtkclient install (setup_mtkclient.py needs it); the system one is often older."""
+    for cand in (sys.executable, *(shutil.which(f"python3.{m}") or "" for m in range(15, 9, -1)),
+                 *(f"/opt/homebrew/bin/python3.{m}" for m in range(15, 9, -1))):
+        if cand and Path(cand).is_file():
+            ok = subprocess.run([cand, "-c", "import sys; sys.exit(sys.version_info < (3, 10))"], capture_output=True).returncode == 0
+            if ok:
+                return cand
+    return None
+
+
+def find_brew():
+    return shutil.which("brew") or next((p for p in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew") if Path(p).is_file()), None)
+
+
+def have_libusb():
+    return bool(ctypes.util.find_library("usb-1.0") or glob.glob("/opt/homebrew/lib/libusb-1.0*.dylib") or glob.glob("/usr/local/lib/libusb-1.0*.dylib"))
+
+
+def pick_path(kind, prompt):
+    """A native chooser (macOS) so nobody types paths; the browser cannot give the page a real path."""
+    if sys.platform != "darwin" or kind not in ("file", "folder"):
+        raise RuntimeError("no file chooser on this system: type the path")
+    what = "file" if kind == "file" else "folder"
+    done = subprocess.run(["osascript", "-e", f'POSIX path of (choose {what} with prompt "{prompt.replace(chr(34), "")}")'], capture_output=True, text=True)
+    return done.stdout.strip() if done.returncode == 0 else ""  # cancelled: empty
+
+
 def build_command(fl, action, params, loader):
     """(kind, argv) for a request, or raises ValueError. Pure: nothing runs here."""
+    if action == "setup":
+        if fl.FROZEN:
+            raise ValueError("nothing to install in this build")
+        python = find_python()
+        if not python:
+            raise ValueError("Python 3.10 or newer is needed first: install it from python.org or with Homebrew")
+        return [python, str(fl.RECOVERY / "setup_mtkclient.py")]
+    if action == "libusb":
+        brew = find_brew()
+        if not brew:
+            raise ValueError("Homebrew is not installed: see brew.sh, then try again")
+        return [brew, "install", "libusb"]
     if action == "identify":
         return script_cmd(fl, ASSETS / "device_info.py", ["--loader", loader])
     if action == "backup":
@@ -125,7 +168,7 @@ def build_command(fl, action, params, loader):
 
 class App:
     def __init__(self, fl):
-        self.fl, self.token, self.jobs, self.current, self.info, self.uart = fl, secrets.token_urlsafe(24), {}, None, None, None
+        self.fl, self.token, self.jobs, self.current, self.info, self.uart = fl, os.environ.pop("X28_TOKEN", None) or secrets.token_urlsafe(24), {}, None, None, None
         self.port = 0
         self.lock = threading.Lock()
 
@@ -201,7 +244,11 @@ class App:
         loader = self.loader_path()
         images = [d.name for d in wizard.image_dirs(PRIVATE / "build")] if (PRIVATE / "build").is_dir() else []
         job = self.current
-        return {"frozen": fl.FROZEN, "ports": ports, "loader": {"path": loader, "ok": Path(loader).is_file()},
+        from common import MTK_HOME
+        in_venv = fl.FROZEN or os.path.realpath(sys.prefix) == os.path.realpath(MTK_HOME / "venv")
+        setup = {"mtkclient": fl.FROZEN or fl.VENV_PY.exists(), "restart": not in_venv and fl.VENV_PY.exists(), "libusb": fl.FROZEN or have_libusb(),
+                 "python": bool(fl.FROZEN or find_python()), "brew": bool(find_brew()), "mac": sys.platform == "darwin"}
+        return {"frozen": fl.FROZEN, "setup": setup, "ports": ports, "loader": {"path": loader, "ok": Path(loader).is_file()},
                 "backup_out": str(fl.default_backup_dir()), "backup_dir": self.config().get("backup") or str(DEFAULT_BACKUP),
                 "images": images, "info": self.info, "uart": self.uart_status(),
                 "job": {"id": job.id, "kind": job.kind, "running": job.code is None} if job else None}
@@ -290,6 +337,23 @@ def make_handler(app):
                     if path[3] == "stop":
                         job.stop(bool(data.get("force")))
                         return self.reply(200, {"ok": True})
+                if path == ["api", "loader"]:
+                    if not Path(str(data.get("path", ""))).is_file():
+                        raise ValueError("that file does not exist")
+                    app.config().set("loader", str(data["path"]))
+                    return self.reply(200, {"ok": True})
+                if path == ["api", "pick"]:
+                    return self.reply(200, {"path": pick_path(data.get("kind"), str(data.get("prompt") or "Choose"))})
+                if path == ["api", "restart"]:  # after the install: run again inside the mtkclient venv, same port and token, so the page just reconnects
+                    if app.current and app.current.code is None:
+                        raise RuntimeError("a job is still running")
+                    env = {**os.environ, "X28_PORT": str(app.port), "X28_TOKEN": app.token}
+                    def again():
+                        time.sleep(0.5)
+                        app.uart_stop()
+                        os.execve(str(app.fl.VENV_PY), [str(app.fl.VENV_PY), *sys.argv], env)
+                    threading.Thread(target=again, daemon=True).start()
+                    return self.reply(200, {"ok": True})
                 if path == ["api", "uart"]:
                     app.uart_start(data["port"], data.get("baud", 0)) if data.get("on") else app.uart_stop()
                     return self.reply(200, app.uart_status() or {})
@@ -301,13 +365,22 @@ def make_handler(app):
 
 
 def serve(fl, open_browser=True, port=0):
+    restarted = "X28_PORT" in os.environ  # started again by /api/restart: same address, and the open page reconnects by itself
     app = App(fl)
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(app))
+    port = int(os.environ.pop("X28_PORT", port))
+    for attempt in range(20):  # the old process may still hold the port for a moment
+        try:
+            server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(app))
+            break
+        except OSError:
+            if attempt == 19:
+                raise
+            time.sleep(0.25)
     server.daemon_threads = True
     app.port = server.server_address[1]
     url = f"http://127.0.0.1:{app.port}/?t={app.token}"
     print(f"x28-flasher is open at {url}\nPress Ctrl-C here to quit.", flush=True)
-    if open_browser:
+    if open_browser and not restarted:
         webbrowser.open(url)
     try:
         server.serve_forever()

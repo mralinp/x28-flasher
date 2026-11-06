@@ -7,6 +7,7 @@ import threading
 import time
 import types
 import unittest
+import unittest.mock
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -86,6 +87,32 @@ class CommandTests(unittest.TestCase):
         fl = types.SimpleNamespace(FROZEN=True, RECOVERY=Path("/r"))
         self.assertEqual(gui.build_command(fl, "test", {}, "DA"), [sys.executable, "run", "test"])
         self.assertEqual(gui.build_command(fl, "identify", {}, "DA")[1], "--run-script")
+
+
+class SetupTests(unittest.TestCase):
+    def test_nothing_to_install_when_frozen(self):
+        with self.assertRaises(ValueError):
+            gui.build_command(types.SimpleNamespace(FROZEN=True, RECOVERY=Path("/r")), "setup", {}, "DA")
+
+    def test_setup_runs_the_install_script_with_a_new_enough_python(self):
+        with unittest.mock.patch.object(gui, "find_python", return_value="/p/python3.14"):
+            self.assertEqual(gui.build_command(FakeFl, "setup", {}, "DA"), ["/p/python3.14", "/r/setup_mtkclient.py"])
+        with unittest.mock.patch.object(gui, "find_python", return_value=None), self.assertRaises(ValueError):
+            gui.build_command(FakeFl, "setup", {}, "DA")
+
+    def test_libusb_needs_homebrew(self):
+        with unittest.mock.patch.object(gui, "find_brew", return_value=None), self.assertRaises(ValueError):
+            gui.build_command(FakeFl, "libusb", {}, "DA")
+        with unittest.mock.patch.object(gui, "find_brew", return_value="/b/brew"):
+            self.assertEqual(gui.build_command(FakeFl, "libusb", {}, "DA"), ["/b/brew", "install", "libusb"])
+
+    def test_chooser_only_for_files_and_folders(self):
+        with unittest.mock.patch.object(gui.sys, "platform", "darwin"), unittest.mock.patch.object(gui.subprocess, "run") as run:
+            with self.assertRaises(RuntimeError):
+                gui.pick_path("../../x", "p")
+            run.return_value = types.SimpleNamespace(returncode=0, stdout="/a/b\n")
+            self.assertEqual(gui.pick_path("file", 'say "hi"'), "/a/b")
+            self.assertNotIn('"hi"', run.call_args[0][0][-1])
 
 
 class ServerTests(unittest.TestCase):
