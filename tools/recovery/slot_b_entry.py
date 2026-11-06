@@ -4,7 +4,8 @@
 The unit boots B and USB is the only way in, so there is no SSH check: the session's `before` read of misc must equal the
 backup's B-selected misc, and the whole tail must equal the backup's. Take a FRESH backup right before (the overlay of a
 booted stock B changes). Order: `identical` (rewrites the same bytes: proves the write and readback path), then `write`,
-then `restore` if needed. Use the private mtkclient venv Python for --write. No reboot or retry; merging this approves nothing.
+then `restore` if needed. Unlike rootfs_a, restore is NOT single-use here: B is the only slot that boots, so a failed restore
+must be retryable (each try is a manual run with the typed phrase and the same before/after guards; nothing retries by itself). Use the private mtkclient venv Python for --write. No reboot or retry; merging this approves nothing.
 """
 import argparse
 import hashlib
@@ -19,7 +20,7 @@ import time
 import slot_b
 import slot_session as session
 from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA, ensure_venv, sha256_file
-from restore_entry import DA_HASH, check_uart, check_unit, claim_restore, host_identity, open_da, save
+from restore_entry import DA_HASH, check_uart, check_unit, host_identity, open_da, save
 from slot_entry import load_prior, verified_backup
 
 PRIOR = {'identical': [], 'write': [('prior_identical', 'identical', True)], 'restore': [('resume', 'write', False)]}
@@ -153,11 +154,6 @@ def main():
         xml_module = sys.modules.get('mtkclient.Library.DA.xmlflash.xml_lib')
         if xml_module is None or sha256_file(Path(xml_module.__file__)) != identity['host']:
             raise ValueError('loaded XML implementation differs from verified host')
-        if args.resume:
-            claim_restore(args.resume.resolve(), run)
-            prior = priors['resume']  # loaded before the claim: load_prior refuses a run that is already claimed
-            prior['status'] = 'RESTORE_ATTEMPTED'
-            save(args.resume.resolve(), prior)
         session.run_session(mtk.daloader, spec, original, candidate, run, mode=args.mode)
         receipt['status'] = 'VERIFIED'
         print('Target and guards verified. No reboot issued. Before any reboot check slot A\'s boot counter; do not reboot casually.')
