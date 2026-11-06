@@ -150,7 +150,7 @@ def stock_access_command(rootfs_b, key, out_dir, repo):
 
 
 def local_commands(inputs, work, out, repo, python="python3"):
-    """The three build steps, in order. inputs: stock, modern, key (files), extra_ipks, kmods, feed (stage extras, kmods dir, feed ipks)."""
+    """The three build steps, in order. inputs: stock, modern (files), optional key, extra_ipks, feed (stage extras, feed ipks)."""
     stage, profile = work / "stage", work / "profile"
     return [
         [python, str(repo / "tools/build/stage_native.py"), "--stock", inputs["stock"], "--modern", inputs["modern"],
