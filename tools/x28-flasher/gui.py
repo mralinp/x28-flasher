@@ -102,6 +102,112 @@ class Job:
             self.proc.send_signal(signal.SIGTERM if force else signal.SIGINT)
 
 
+MARK = "\x1e"  # session_host's marker lines start with it
+SESSION_ACTIONS = ("identify", "backup", "read", "test", "flash", "access", "rescue")  # the steps that talk to the modem
+
+
+class RunJob(Job):
+    """A command run inside the live session: it shows the session's output until the command's marker line arrives."""
+
+    def __init__(self, kind, link, on_line=None):
+        self.id, self.kind, self.lines, self.tail, self.code = secrets.token_hex(4), kind, [], "", None
+        self.cond, self.on_line, self.link = threading.Condition(), on_line, link
+
+    def send(self, text):
+        return self.code is None and self.link.send(text)
+
+    def stop(self, force=False):
+        if self.code is None:
+            self.link.interrupt()
+
+    def finish(self, code):
+        with self.cond:
+            if self.code is None:
+                self.code = code
+            self.cond.notify_all()
+
+
+class SessionLink(Job):
+    """The process that holds the connection to the modem (session_host.py). Its terminal carries the output of whatever command it runs."""
+
+    def __init__(self, argv, env, sock, app):
+        self.sock, self.app, self.active, self.connected, self._marker = sock, app, None, False, None
+        super().__init__("session", argv, env)
+        threading.Thread(target=self._reap, daemon=True).start()
+
+    def feed(self, text):
+        out = []
+        for ch in text:
+            if self._marker is not None:
+                if ch == "\n":
+                    self._handle(self._marker)
+                    self._marker = None
+                else:
+                    self._marker += ch
+            elif ch == MARK:
+                self._marker = ""
+            else:
+                out.append(ch)
+        text = "".join(out)
+        if text and self.active:
+            self.active.feed(text)
+        super().feed(text)
+
+    def _handle(self, text):
+        if text == "X28SESSION connected":
+            self.connected = True
+        elif text.startswith("X28DONE "):
+            _, ident, code = text.split()
+            if self.active and self.active.id == ident:
+                job, self.active = self.active, None
+                job.finish(int(code))
+
+    def _reap(self):
+        code = self.proc.wait()
+        self.connected = False
+        if self.app.session is self:
+            self.app.session = None
+        if self.active:
+            self.active.finish(code or 1)
+
+    def submit(self, command):
+        """Hand a command to the session over its socket (it may still be starting up)."""
+        deadline = time.time() + 90
+        while time.time() < deadline and self.code is None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+                    s.connect(self.sock)
+                    s.sendall((json.dumps(command) + "\n").encode())
+                return True
+            except OSError:
+                time.sleep(0.3)
+        return False
+
+    def interrupt(self):
+        if self.code is None:
+            self.proc.send_signal(signal.SIGINT)
+
+    def disconnect(self, force=False):
+        if self.code is None:
+            if force:
+                self.proc.terminate()
+            else:
+                self.submit({"kind": "quit", "id": "q"})
+        for _ in range(60):
+            if self.code is not None:
+                return
+            time.sleep(0.1)
+        self.proc.terminate()
+
+
+def session_command(argv, env, ident):
+    """The command the session runs for a tool's argv: a script (run with the binary's --run-script or the venv python) or a wizard action."""
+    if len(argv) >= 3 and argv[-2] == "run":
+        return {"kind": "action", "action": argv[-1], "env": env, "id": ident}
+    start = 2 if argv[1] == "--run-script" else 1
+    return {"kind": "script", "script": argv[start], "argv": argv[start + 1:], "env": env, "id": ident}
+
+
 def script_cmd(fl, script, argv):
     """A tool script under the mtkclient venv from a checkout, or this binary's --run-script when frozen."""
     return [sys.executable, "--run-script", str(script), *argv] if fl.FROZEN else [str(fl.VENV_PY), str(script), *argv]
@@ -197,7 +303,21 @@ class App:
     def __init__(self, fl):
         self.fl, self.token, self.jobs, self.current, self.info, self.uart = fl, os.environ.pop("X28_TOKEN", None) or secrets.token_urlsafe(24), {}, None, None, None
         self.port = 0
+        self.session = None
         self.lock = threading.Lock()
+
+    def new_session(self, loader):
+        fl = self.fl
+        sock = str(RUN_FILE.parent / "session.sock")
+        argv = [sys.executable, "session", "--sock", sock, "--loader", loader] if fl.FROZEN else \
+            [str(fl.VENV_PY), str(Path(fl.__file__).resolve()), "session", "--sock", sock, "--loader", loader]
+        RUN_FILE.parent.mkdir(mode=0o700, exist_ok=True)
+        self.session = SessionLink(argv, {"X28_RECOVERY": str(fl.RECOVERY)}, sock, self)
+        return self.session
+
+    def disconnect(self, force=False):
+        if self.session:
+            self.session.disconnect(force)
 
     def config(self):
         import wizard
@@ -234,6 +354,13 @@ class App:
                         self.info = {**json.loads(line[len(INFO_PREFIX):]), "at": time.time()}
                     except ValueError:
                         pass
+            if action in SESSION_ACTIONS:  # one process holds the modem connection: only the first action needs a power cycle
+                link = self.session if self.session and self.session.code is None else self.new_session(loader)
+                job = RunJob(action, link, on_line)
+                link.active = job
+                self.jobs[job.id] = self.current = job
+                threading.Thread(target=link.submit, args=(session_command(argv, env, job.id),), daemon=True).start()
+                return job
             job = Job(action, argv, env, on_line)
             self.jobs[job.id] = self.current = job
             return job
@@ -300,6 +427,7 @@ class App:
         return {"frozen": fl.FROZEN, "setup": setup, "ports": ports, "loader": {"path": loader, "ok": Path(loader).is_file()},
                 "backup_out": str(fl.default_backup_dir()), "backup_dir": self.config().get("backup") or str(DEFAULT_BACKUP),
                 "images": images, "info": self.info, "build": self.build_inputs(), "uart": self.uart_status(),
+                "session": {"state": "connected" if self.session.connected else "connecting"} if self.session and self.session.code is None else None,
                 "job": {"id": job.id, "kind": job.kind, "running": job.code is None} if job else None}
 
 
@@ -386,11 +514,17 @@ def make_handler(app):
                     if path[3] == "stop":
                         job.stop(bool(data.get("force")))
                         return self.reply(200, {"ok": True})
+                if path == ["api", "session"]:  # Disconnect: close the held connection to the modem
+                    if app.current and app.current.code is None:
+                        raise RuntimeError("a job is still running: stop it first")
+                    app.disconnect()
+                    return self.reply(200, {"ok": True})
                 if path == ["api", "quit"]:  # the page's Quit button: stop the background server
                     if app.current and app.current.code is None:
                         raise RuntimeError("a job is still running: stop it first")
                     def bye():
                         time.sleep(0.3)
+                        app.disconnect(force=True)
                         app.uart_stop()
                         RUN_FILE.unlink(missing_ok=True)
                         os._exit(0)
@@ -473,6 +607,11 @@ def serve(fl, open_browser=True, port=0):
     print(f"x28-flasher is open at {url}\nPress Ctrl-C here to quit.", flush=True)
     if open_browser and not restarted:
         webbrowser.open(url)
+    def terminated(*_):  # the native window closing: let go of the modem as well
+        app.disconnect(force=True)
+        RUN_FILE.unlink(missing_ok=True)
+        os._exit(0)
+    signal.signal(signal.SIGTERM, terminated)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -481,5 +620,6 @@ def serve(fl, open_browser=True, port=0):
         app.uart_stop()
         if app.current:
             app.current.stop()
+        app.disconnect(force=True)
         RUN_FILE.unlink(missing_ok=True)
     return 0

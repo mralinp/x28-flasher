@@ -135,6 +135,11 @@ function identityRows(list) {  // productinfo values, told apart by shape; two s
     return `<dt class="mut">${label}</dt><dd class="mono" style="font-size:11.5px">${esc(value)}</dd>`;
   }).join("");
 }
+function sessionNote() {
+  const ss = S.st && S.st.session;
+  return ss ? `<p style="font-size:12.5px;color:var(--ok)">● ${ss.state === "connected" ? "Connected: every action uses this connection, no power cycle needed. Disconnect, then power-cycle, to boot the modem." : "Connecting to the modem…"}</p>`
+    : `<p class="mut" style="font-size:12px">Not connected. The next action asks for a power cycle and then keeps the connection open.</p>`;
+}
 function drawSide() {
   const i = S.st && S.st.info;
   let h;
@@ -151,8 +156,8 @@ function drawSide() {
       ${identityRows(i.identity || [])}
     </dl>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${["sbc", "sla", "daa"].map((k) => `<span class="chip ${tc[k] ? "on" : ""}">${k.toUpperCase()} ${tc[k] ? "on" : "off"}</span>`).join("")}</div>
-    <p class="mut" style="font-size:12px">The board is waiting in download mode. Power-cycle it to boot normally.</p>
-    <button class="btn" data-act="connect" ${busy() ? "disabled" : ""} style="align-self:flex-start">Read again</button>`;
+    ${sessionNote()}
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="connect" ${busy() ? "disabled" : ""}>Read again</button>${S.st.session ? `<button class="btn" data-act="disconnect" ${busy() ? "disabled" : ""}>Disconnect</button>` : ""}</div>`;
   } else {
     h = `<div style="display:flex;align-items:center;gap:10px"><span class="dot" style="background:#6b7385"></span><b style="font-size:15px">No device read yet</b></div>
     <p class="mut">Connect reads the hardware ID, MEID, flash and the partitions on the board.</p>
@@ -186,7 +191,8 @@ function drawConsole() {
   const key = JSON.stringify([running, j.tail, opts, j.code]);
   if (ctl.dataset.key === key) return;
   ctl.dataset.key = key;
-  if (running && !WRITES.includes(j.kind)) {
+  const asking = /[:?\]]\s*$/.test(j.tail);  // a question is pending (a progress bar is not one)
+  if (running && !WRITES.includes(j.kind) && !asking) {
     ctl.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><span class="mut" style="flex:1">Working… nothing to answer.</span><button type="button" class="btn" data-act="stop" title="Same as Ctrl-C in the terminal">Stop</button></div>`;
   } else if (running) {
     ctl.innerHTML = `<form data-act="send" style="display:flex;gap:8px;flex-wrap:wrap">
@@ -286,21 +292,24 @@ function powerWizard(title) {
     <div style="width:min(760px,100%)">${consoleHtml()}</div>
     ${busy() ? "" : `<button class="btn" data-act="pw-cancel">Cancel</button>`}</div>`;
 }
-function openPower(kind, params) {
+async function openPower(kind, params) {
   S.job = null;
-  S.pw = { step: 1, count: 10, kind, params };
   S.screen = kind === "identify" ? "wizard" : S.screen;
+  if (S.st && S.st.session && S.st.session.state === "connected") {  // the modem is already connected: no power cycle
+    S.pw = null;
+    if (await start(kind, params)) drawView();
+    return;
+  }
+  S.pw = { step: 1, count: 10, kind, params, plug: true };  // the connection comes first now, so step 3 is "plug in"
   drawSide(); drawView();
 }
 /* Flash, SSH access and Rescue run like Backup: Power off, 10 s, then the job starts. The tool asks for its typed phrase first (the modem stays off),
    and only when it says it needs the modem does the page say "plug in now". */
 const POWER_OFF = "modem power must be OFF now", CONNECTED = /Preloader|DAXML|DA\d/;
 function powerStep(j) {
-  if (!WRITES.includes(j.kind) || !S.pw || S.pw.kind !== j.kind) return;
+  if (!S.pw || S.pw.kind !== j.kind) return;
   const at = j.lines.findIndex((l) => l.includes(POWER_OFF));
-  if (at < 0) return;
-  if (!S.pw.plug) { S.pw.plug = true; drawView(); }
-  else if (j.lines.slice(at + 1).some((l) => CONNECTED.test(l))) { S.pw = null; drawView(); }
+  if (at >= 0 && S.pw.step === 3 && j.lines.slice(at + 1).some((l) => CONNECTED.test(l))) { S.pw = null; drawView(); refresh(); }
 }
 function pwNext() {
   const p = S.pw;
@@ -335,6 +344,7 @@ function viewBackup() {
 const fmt = (b) => b >= 1048576 ? (Math.round(b / 104857.6) / 10) + " MiB" : Math.round(b / 1024) + " KiB";
 
 function wizardRunner(title, sub, action, label, extra = "") {
+  if (S.pw && S.pw.kind === action) return powerWizard();  // Read and Self-test: the same power steps as Backup
   return `${head(title, sub)}${extra}
   <div><button class="primary" data-act="run" data-run="${action}" ${busy() ? "disabled" : ""}>${label}</button></div>
   ${S.job && S.job.kind === action ? consoleHtml() : ""}`;
@@ -480,6 +490,7 @@ document.addEventListener("click", async (e) => {
     } catch (er) { alert(er.message); }
     return;
   }
+  if (a === "disconnect") { try { await api("/api/session", {}); } catch (er) { alert(er.message); } await refresh(); return drawView(); }
   if (a === "pw-next") return pwNext();
   if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
   if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader")?.value, twice: $("#bk-twice").checked });
@@ -492,7 +503,10 @@ document.addEventListener("click", async (e) => {
     } catch (er) { return alert(er.message); }
     S.job = null; if (await start("build", params)) drawView(); return;
   }
-  if (a === "run") { S.job = null; if (await start(t.dataset.run)) drawView(); return; }
+  if (a === "run") {
+    if (t.dataset.run === "read" || t.dataset.run === "test") return openPower(t.dataset.run, {});  // these talk to the modem: power steps, or the open connection
+    S.job = null; if (await start(t.dataset.run)) drawView(); return;
+  }
   if (a === "write") {
     $("#risk")?.close();  // the dialog is the user's accept; the server refuses without accept: true too
     S.job = null;

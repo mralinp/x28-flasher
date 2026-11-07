@@ -29,10 +29,36 @@ from mtkclient.Library.Partitions.gpt import GptSettings  # noqa: E402
 from mtkclient.Library.mtk_class import Mtk  # noqa: E402
 
 problems = Problems()  # after the mtkclient imports, which reset the root logger's handlers
+LIVE = None  # the connection a live session holds (x28_flasher session): every tool then reuses it instead of asking for a power cycle
+
+
+def hold(mtk):
+    """Keep mtk open across tools: its port's close() does nothing until release()."""
+    global LIVE
+    mtk._real_close = mtk.port.close
+    mtk.port.close = lambda *a, **k: None
+    LIVE = mtk
+
+
+def release():
+    """Really close the held connection (host USB close only; the download agent stays as it is)."""
+    global LIVE
+    mtk, LIVE = LIVE, None
+    if mtk is not None:
+        mtk.port.close = mtk._real_close
+        mtk.port.close()
+
+
+def power_cycle_note():
+    if LIVE is None:  # a live session stays connected: nothing to cycle
+        print("cycle the modem's power to boot it normally", flush=True)
 
 
 def connect(out, loader):
-    """Preloader handshake (watchdog untouched) and DA upload, as `mtk` does for DA commands."""
+    """Preloader handshake (watchdog untouched) and DA upload, as `mtk` does for DA commands. In a live session: the connection it already holds."""
+    if LIVE is not None:
+        print("using the open connection to the modem (no power cycle needed)", flush=True)
+        return LIVE
     problems.attach()
     config = MtkConfig(loglevel=logging.INFO, gui=None, guiprogress=None)
     config.skipwdt = True
@@ -103,7 +129,7 @@ def main():
         else:
             print("READ-PARTITION-TABLE: no data")
     finally:
-        print("cycle the modem's power to boot it normally")
+        power_cycle_note()
         mtk.port.close()
         problems.report()
 

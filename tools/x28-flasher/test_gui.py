@@ -215,3 +215,82 @@ class RehearsalMatchTests(unittest.TestCase):
                 (probe / name / "receipt.json").write_text(json.dumps({"status": "VERIFIED", "created": time.time(), "identity": {"tools": tools}}))
             self.assertEqual([r.name for r in wizard.verified_identicals(probe, tools="T2")], ["slot-rootfs_a-identical-new"])
             self.assertEqual(len(wizard.verified_identicals(probe)), 2)  # without a tools digest every verified one counts
+
+
+class LiveSessionTests(unittest.TestCase):
+    def link(self):
+        link = object.__new__(gui.SessionLink)
+        link.active, link.connected, link._marker, link.lines, link.tail = None, False, None, [], ""
+        link.cond, link.on_line = threading.Condition(), None
+        return link
+
+    def test_session_commands_from_a_tools_argv(self):
+        self.assertEqual(gui.session_command(["/app/x28-flasher", "--run-script", "/r/usb_backup.py", "--out", "O"], {"A": "1"}, "i1"),
+                         {"kind": "script", "script": "/r/usb_backup.py", "argv": ["--out", "O"], "env": {"A": "1"}, "id": "i1"})
+        self.assertEqual(gui.session_command(["/venv/python", "/r/device_info.py", "--loader", "DA"], {}, "i2")["argv"], ["--loader", "DA"])
+        self.assertEqual(gui.session_command(["/app/x28-flasher", "run", "flash"], {}, "i3"), {"kind": "action", "action": "flash", "env": {}, "id": "i3"})
+
+    def test_marker_lines_are_stripped_and_end_the_active_command(self):
+        link = self.link()
+        job = gui.RunJob("backup", link)
+        link.active = job
+        text = f"hello\n\x1eX28SESSION connected\nmore\n\x1eX28DONE {job.id} 3\n"
+        for ch in text:  # one character at a time: a marker may arrive in pieces
+            link.feed(ch)
+        self.assertTrue(link.connected)
+        self.assertIn("hello", job.lines)
+        self.assertIn("more", job.lines)
+        self.assertFalse(any("X28" in line for line in job.lines))
+        self.assertEqual(job.code, 3)
+        self.assertIsNone(link.active)
+
+    def test_a_marker_for_another_command_does_not_end_this_one(self):
+        link = self.link()
+        job = gui.RunJob("read", link)
+        link.active = job
+        link.feed("\x1eX28DONE someone-else 0\n")
+        self.assertIsNone(job.code)
+
+
+FAKE_HOST = r'''
+import json, os, socket, sys
+sock = sys.argv[1]
+srv = socket.socket(socket.AF_UNIX); srv.bind(sock); srv.listen(1)
+print("waiting for the modem", flush=True)
+print("\n\x1eX28SESSION connected", flush=True)
+while True:
+    conn, _ = srv.accept()
+    for line in conn.makefile():
+        cmd = json.loads(line)
+        if cmd["kind"] == "quit":
+            sys.exit(0)
+        print("running " + cmd["script"], flush=True)
+        print("\n\x1eX28DONE %s 0" % cmd["id"], flush=True)
+'''
+
+
+class LiveSessionProcessTests(unittest.TestCase):
+    """The page's plumbing against a stand-in session host: pty, socket, markers, one connection for several commands."""
+
+    def test_two_commands_share_one_session_and_it_closes_on_disconnect(self):
+        with tempfile.TemporaryDirectory() as d:
+            host = Path(d) / "host.py"
+            host.write_text(FAKE_HOST)
+            sock = str(Path(d) / "s.sock")
+            app = types.SimpleNamespace(session=None)
+            link = gui.SessionLink([sys.executable, str(host), sock], {}, sock, app)
+            app.session = link
+            jobs = []
+            for name in ("one", "two"):
+                job = gui.RunJob("read", link)
+                link.active = job
+                self.assertTrue(link.submit({"kind": "script", "script": name, "argv": [], "env": {}, "id": job.id}))
+                with job.cond:
+                    job.cond.wait_for(lambda: job.code is not None, timeout=10)
+                jobs.append(job)
+            self.assertEqual([j.code for j in jobs], [0, 0])
+            self.assertIn("running one", jobs[0].lines)
+            self.assertIn("running two", jobs[1].lines)
+            self.assertTrue(link.connected)
+            link.disconnect()
+            self.assertIsNotNone(link.code)

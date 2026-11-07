@@ -75,7 +75,7 @@ def main():
                 "table": [{"name": n, "start": s, "size": z} for n, s, z in ROW.findall(text)],
                 "identity": identity_values(productinfo) if productinfo else []}
     finally:
-        print("cycle the modem's power to boot it normally", flush=True)
+        read_by_name.power_cycle_note()
         mtk.port.close()
     late = read_state(out)  # in case mtkclient writes .state only when it closes
     for key in ("hwcode", "meid", "flashtype", "flashsize", "flashmode", "target_config"):

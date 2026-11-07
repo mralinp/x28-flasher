@@ -143,7 +143,7 @@ def main():
     print(f"{len(parts)} partitions, {sum(p['size'] for p in parts) / 2**20:.0f} MiB"
           f"{'' if args.no_verify else ', each read twice'}; writing to {args.out}")
     args.out.mkdir(parents=True, exist_ok=True)
-    from read_by_name import connect, problems  # re-runs this script under the mtkclient venv when not frozen
+    from read_by_name import connect, power_cycle_note, problems  # re-runs this script under the mtkclient venv when not frozen
     os.chdir(args.out)  # mtkclient drops its hwparam/state files in the working directory
     mtk = connect(args.out.resolve(), args.loader.resolve())
     try:
@@ -156,7 +156,7 @@ def main():
         print(f"\n{stop}")
         sys.exit(3)
     finally:
-        print("cycle the modem's power to boot it normally")
+        power_cycle_note()
         mtk.port.close()
     archive = seal(args.out.resolve(), sums, layout_text)
     print(f"backup complete: {len(sums)} partitions, archive {archive} ({sha256_file(archive)[:12]})")

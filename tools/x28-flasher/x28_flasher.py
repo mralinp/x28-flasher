@@ -153,9 +153,15 @@ def flash_b_cmd(args, uart, backup_copy):
     return cmd
 
 
+def live():
+    """True inside a live session: the modem connection is held by this process, so tools run here and never ask for a power cycle."""
+    mod = sys.modules.get("read_by_name")
+    return bool(mod and getattr(mod, "LIVE", None) is not None)
+
+
 def run_tool(script, argv):
-    """The guarded tools run in this process when frozen (no second interpreter), else under the mtkclient venv."""
-    if FROZEN:
+    """The guarded tools run in this process when frozen (no second interpreter) or in a live session, else under the mtkclient venv."""
+    if FROZEN or live():
         import runpy
         sys.argv = [script, *argv]
         try:
@@ -200,6 +206,8 @@ def cmd_flash(args, ui=None, tool="slot_entry.py", build_cmd=None):
 
 def power_off_countdown(seconds=10, ask=input, sleep=time.sleep):
     """The preloader only answers for ~1 s after power-on and a stuck DA needs a full power-off first."""
+    if live():
+        return
     ask("Unplug the router's power, then press Enter: ")
     for left in range(seconds, 0, -1):
         print(paint(f"\r  keep the power off: {left:2d} s ", "yellow"), end="", flush=True)
@@ -270,6 +278,10 @@ def main():
     ru = sub.add_parser("run")  # one wizard step with plain prompts; the page runs these and relays the questions
     ru.add_argument("action", choices=("build", "test", "read", "flash", "access", "rescue"))
     ru.set_defaults(fn=lambda a: __import__("wizard").run_action(sys.modules[__name__], a.action))
+    se = sub.add_parser("session")  # the page's live connection to the modem (session_host.py)
+    se.add_argument("--sock", required=True)
+    se.add_argument("--loader")
+    se.set_defaults(fn=lambda a: __import__("session_host").main(sys.modules[__name__], a.sock, a.loader))
     sub.add_parser("ports").set_defaults(fn=cmd_ports)
     sub.add_parser("uart").set_defaults(fn=cmd_uart)
     sub.add_parser("identity").set_defaults(fn=cmd_identity)
