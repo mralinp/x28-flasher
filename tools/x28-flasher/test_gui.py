@@ -101,6 +101,25 @@ class CommandTests(unittest.TestCase):
         for action in ("access", "rescue"):
             self.assertEqual(gui.build_command(FakeFl, action, {"accept": True}, "DA")[-2:], ["run", action])
 
+    def test_read_form_builds_the_tool_command_and_checks_the_name_and_backup(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "bk/images").mkdir(parents=True)
+            (d / "bk/ARCHIVE.sha256").write_text("x  a.tar")
+            (d / "bk/images/mtd10-rootfs_b.bin").write_bytes(b"")
+            cmd = gui.build_command(FakeFl, "read", {"partition": "misc", "save": str(d / "out"), "compare": True, "backup": str(d / "bk")}, "DA")
+            self.assertIn("misc", cmd)
+            self.assertEqual(cmd[cmd.index("--backup") + 1], str(d / "bk"))
+            self.assertEqual(cmd[cmd.index("--save-to") + 1], str(d / "out"))
+            plain = gui.build_command(FakeFl, "read", {"partition": "lk_b", "save": str(d)}, "DA")
+            self.assertIn("--no-compare", plain)
+            self.assertNotIn("--backup", plain)
+            for bad in ("../x", "a b", "", "x" * 41):
+                with self.assertRaises(ValueError):
+                    gui.build_command(FakeFl, "read", {"partition": bad or "!"}, "DA")
+            with self.assertRaisesRegex(ValueError, "ARCHIVE"):
+                gui.build_command(FakeFl, "read", {"partition": "misc", "compare": True, "backup": str(d)}, "DA")
+
     def test_flash_checks_slot_image_backup_copy_and_rehearsal(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
@@ -243,6 +262,14 @@ class LiveSessionTests(unittest.TestCase):
         self.assertFalse(any("X28" in line for line in job.lines))
         self.assertEqual(job.code, 3)
         self.assertIsNone(link.active)
+
+    def test_output_in_the_same_chunk_as_its_end_marker_is_not_lost(self):
+        link = self.link()
+        job = gui.RunJob("read", link)
+        link.active = job
+        link.feed(f"MATCH\n\n\x1eX28DONE {job.id} 0\n")
+        self.assertIn("MATCH", job.lines)
+        self.assertEqual(job.code, 0)
 
     def test_a_marker_for_another_command_does_not_end_this_one(self):
         link = self.link()

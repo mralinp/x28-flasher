@@ -105,10 +105,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("partition", nargs="?", default="lk_b")
     ap.add_argument("--backup", type=Path, default=DEFAULT_BACKUP)
+    ap.add_argument("--no-compare", action="store_true", help="just read: do not look the partition up in a backup or compare")
+    ap.add_argument("--save-to", type=Path, help="also keep the partition as DIR/<name>.bin")
     ap.add_argument("--loader", type=Path, default=VENDOR_DA if VENDOR_DA.is_file() else None,
                     help="download agent file (default: the vendor DA in private/, if present)")
     args = ap.parse_args()
-    part, expected = backup_partition(args.backup, args.partition)
+    part, expected = (None, None) if args.no_compare else backup_partition(args.backup, args.partition)
 
     loader = args.loader and args.loader.resolve()  # before chdir below
     out = probe_dir()
@@ -139,6 +141,13 @@ def main():
     path.write_bytes(data)
     actual = sha256_file(path)
     print(f"read     {len(data):#x} bytes, sha256 {actual}")
+    if args.save_to:
+        args.save_to.mkdir(parents=True, exist_ok=True)
+        keep = args.save_to / f"{args.partition}.bin"
+        keep.write_bytes(data)
+        print(f"saved    {keep}")
+    if args.no_compare:
+        return
     print(f"backup   {part['size']:#x} bytes, sha256 {expected}")
     print("MATCH" if actual == expected else "MISMATCH")
     sys.exit(0 if actual == expected else 1)

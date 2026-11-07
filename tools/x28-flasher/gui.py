@@ -135,6 +135,14 @@ class SessionLink(Job):
         super().__init__("session", argv, env)
         threading.Thread(target=self._reap, daemon=True).start()
 
+    def relay(self, out):
+        text = "".join(out)
+        out.clear()
+        if text:
+            if self.active:
+                self.active.feed(text)
+            super().feed(text)
+
     def feed(self, text):
         out = []
         for ch in text:
@@ -145,13 +153,11 @@ class SessionLink(Job):
                 else:
                     self._marker += ch
             elif ch == MARK:
+                self.relay(out)  # what came before the marker belongs to the command the marker ends
                 self._marker = ""
             else:
                 out.append(ch)
-        text = "".join(out)
-        if text and self.active:
-            self.active.feed(text)
-        super().feed(text)
+        self.relay(out)
 
     def _handle(self, text):
         if text == "X28SESSION connected":
@@ -292,6 +298,21 @@ def build_command(fl, action, params, loader):
         if params.get("accept") is not True:
             raise ValueError("accept the risk first: this writes the board")
         return action_cmd(fl, action)
+    if action == "read" and params.get("partition"):  # the page's Read form; without a partition the terminal wizard asks for one
+        import re
+        from common import PRIVATE
+        name = str(params["partition"]).strip()
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,40}", name):
+            raise ValueError("that is not a partition name")
+        argv = [name, "--loader", loader, "--save-to", str(params.get("save") or PRIVATE / "reads")]
+        if params.get("compare"):
+            import wizard
+            if problem := wizard.backup_problem(str(params.get("backup") or "")):
+                raise ValueError(problem)
+            argv += ["--backup", str(params["backup"])]
+        else:
+            argv.append("--no-compare")
+        return script_cmd(fl, fl.RECOVERY / "read_by_name.py", argv)
     if action in WRITE_ACTIONS and params.get("accept") is not True:
         raise ValueError("accept the risk first: this writes the board")
     if action in WIZARD_ACTIONS + WRITE_ACTIONS:
@@ -405,6 +426,7 @@ class App:
             found += [root, *(d for d in root.glob("*") if d.is_dir())] if root.is_dir() else []
         backups = sorted({str(d) for d in found if wizard.backup_problem(d) is None})
         return {"backups": backups, "docker": bool(shutil.which("docker")),
+                "reads_dir": str(PRIVATE / "reads"),
                 "images": [str(d) for d in wizard.image_dirs(PRIVATE / "build")] if (PRIVATE / "build").is_dir() else [],
                 "rehearsals": [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe", tools=slot_tools_digest())] if (PRIVATE / "usb-probe").is_dir() else [],
                 "stale_rehearsals": len(wizard.verified_identicals(PRIVATE / "usb-probe")) - len(wizard.verified_identicals(PRIVATE / "usb-probe", tools=slot_tools_digest())) if (PRIVATE / "usb-probe").is_dir() else 0}
