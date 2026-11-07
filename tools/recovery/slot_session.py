@@ -163,9 +163,16 @@ def run_session(da, spec, original, candidate, output, *, mode, base=None):
             journal.flush()
             os.fsync(journal.fileno())  # Preserve the attempted-write boundary before USB I/O.
 
+        steps = {'n': 0, 'of': 0}
+
+        def say(text):
+            print(text, flush=True)  # the page streams this: a long session must show what it is doing
+
         def read(label, name, addr, size):
             path = out / f'{label}-{name}.bin'
-            ack = da.readflash(addr=addr, length=size, filename=str(path), parttype=None, display=False)
+            steps['n'] += 1
+            say(f'[{label} {steps["n"]}/{steps["of"]}] reading {name} ({size / 2**20:.1f} MiB)')
+            ack = da.readflash(addr=addr, length=size, filename=str(path), parttype=None, display=True)
             length = path.stat().st_size if path.is_file() else None
             actual = sha256_file(path) if length == size else None
             record(read=label, name=name, acknowledged=ack is True, length=length, sha256=actual)
@@ -177,6 +184,8 @@ def run_session(da, spec, original, candidate, output, *, mode, base=None):
 
         def check(label, expected_target):
             # restore tolerates any target state (an interrupted write); everything else must match exactly.
+            steps['n'], steps['of'] = 0, 1 + len(spec.restore_guards if mode == 'restore' else spec.guards)
+            say(f'--- {label}: reading the target and {steps["of"] - 1} guard partitions to prove nothing else changed (a few minutes)')
             actual = read(label, spec.name, spec.addr, spec.size)
             if expected_target is not None:
                 if spec.base_head and label == 'before':  # static head only; the overlay tail of a booted slot is volatile
@@ -206,11 +215,14 @@ def run_session(da, spec, original, candidate, output, *, mode, base=None):
             if source.stat().st_size != spec.size or sha256_file(source) != want:
                 raise ValueError('source changed before writing')
             record(write_attempt=mode, sha256=want)
-            ack = da.writeflash(addr=spec.addr, length=spec.size, filename=str(source), parttype=None, display=False)
+            say(f'--- writing {spec.name}: {spec.size / 2**20:.0f} MiB ({mode}). Do not unplug anything.')
+            ack = da.writeflash(addr=spec.addr, length=spec.size, filename=str(source), parttype=None, display=True)
             record(write_result=mode, acknowledged=ack is True)
             if ack is not True:
                 raise ValueError('STOP: write was not acknowledged; no retry or reboot')
+            say('--- write acknowledged; reading everything back to verify')
             check('after', want)
+            say('--- verified: target and guards match')
             record(status='TARGET_AND_GUARDS_VERIFIED')
         except BaseException:
             record(status='STOP_UNVERIFIED_NO_RETRY_OR_REBOOT')
