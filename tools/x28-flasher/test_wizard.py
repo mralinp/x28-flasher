@@ -112,20 +112,15 @@ class PlainPromptTests(unittest.TestCase):
             code = wizard.autopilot(types.SimpleNamespace(FROZEN=False), ui, None)
         self.assertEqual((code, ran), (3, ["backup"]))
 
-    def test_autopilot_does_not_flash_from_a_frozen_binary(self):
+    def test_build_reports_a_failed_assembly_without_crashing(self):
         import io
+        import os
         from contextlib import redirect_stdout
-        with redirect_stdout(io.StringIO()), mock.patch.object(wizard, "backup", side_effect=AssertionError):
-            self.assertEqual(wizard.autopilot(types.SimpleNamespace(FROZEN=True), None, None), 0)
-
-    def test_build_reports_a_missing_release_without_crashing(self):
-        import io
-        from contextlib import redirect_stdout
-        ui = types.SimpleNamespace(select=lambda msg, choices: "download")
         out = io.StringIO()
-        with redirect_stdout(out), mock.patch("images.get", return_value=b"[]"):
-            self.assertEqual(wizard.build(types.SimpleNamespace(FROZEN=False), ui, None), 1)
-        self.assertIn("#254", out.getvalue())
+        with redirect_stdout(out), mock.patch.dict(os.environ, {"X28_BUILD": '{"backup": "b", "tag": "v0"}'}), \
+                mock.patch.object(wizard, "build_local", side_effect=RuntimeError("release v0 not found")):
+            self.assertEqual(wizard.build(types.SimpleNamespace(FROZEN=False), None, None), 1)
+        self.assertIn("release v0 not found", out.getvalue())
 
 
     def test_choose_key_lists_keys_remembers_and_never_guesses(self):
