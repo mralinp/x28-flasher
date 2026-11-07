@@ -1,28 +1,122 @@
-# x28-flasher
+<div align="center">
 
-Backup, verify and guarded flashing tools for the ZLT X28 5G CPE (MediaTek MT6890). The firmware itself lives in
-[mralinp/zlt-x28-openwrt](https://github.com/mralinp/zlt-x28-openwrt); its docs (`docs/RECOVERY.md`, `docs/BUILD.md`,
-`docs/research/`) describe the procedures these tools implement.
+<img src="docs/assets/logo.svg" alt="X28 Flasher" width="120">
 
-- `tools/recovery/`: backup and verify, mtkclient setup, USB reads, and the guarded flash sessions (dry run first, typed phrase per step). Do not edit these mid-chain: their hashes bind the receipts.
-- `tools/x28-flasher/`: the wizard and the single-binary build (PyInstaller). Frozen builds are read-only.
-- `tools/build/`, `tools/firmware/`: image assembly (`stage_native.py`, `first_boot.py`, `ab_guard.py`, `package_ubi.py`) and the tools container. `first_boot.py` reads the firmware's package files from the release's `x28-overlay-*.tar.gz` (the wizard downloads it; set `X28_OVERLAY` or extract it to `overlay/` to run the scripts or tests by hand).
+# X28 Flasher
 
-```
+**Backup, verify and guarded flashing for the ZLT X28 5G CPE (MediaTek MT6890): a double-click app that walks you from a full NAND backup to native OpenWrt, and back again if anything goes wrong.**
+
+[![CI](https://github.com/mralinp/x28-flasher/actions/workflows/ci.yml/badge.svg)](https://github.com/mralinp/x28-flasher/actions/workflows/ci.yml)
+![SoC](https://img.shields.io/badge/SoC-MediaTek%20MT6890%20(T750)-orange)
+![Platforms](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux-lightgrey)
+[![License: GPL v2](https://img.shields.io/badge/license-GPL--2.0--only-blue.svg)](LICENSE)
+
+[Warning](#warning) · [What it does](#what-it-does) · [Install](#install-and-run) · [The steps](#the-steps) · [Safety model](#safety-model) · [Build](#build-the-app) · [Layout](#repository-layout) · [Tests](#tests)
+
+</div>
+
+> [!WARNING]
+> <a id="warning"></a>**Your device, your risk.** The X28 is usually someone's only internet connection, and flashing it
+> writes its NAND over the MediaTek download agent. Take a verified backup first, keep a UART attached, and read
+> [docs/USAGE.md](docs/USAGE.md) before ticking any box. Not affiliated with ZLT, Tozed, MediaTek or Quectel.
+
+The firmware itself lives in [mralinp/zlt-x28-openwrt](https://github.com/mralinp/zlt-x28-openwrt); its docs
+(`docs/RECOVERY.md`, `docs/BUILD.md`, `docs/research/`) describe the procedures these tools implement. This repo does
+not depend on that repo's code: images, userspace, feed packages and the overlay are downloaded from its releases and
+hash-checked.
+
+## What it does
+
+| Step | What happens | Writes flash? |
+|---|---|---|
+| **Connect** | Power off, wait 10 s, power on: finds the unit over USB (BROM) | no |
+| **Backup** | Reads all partitions over USB into a hash-verified archive, with a second copy | no |
+| **Read & verify** | Re-reads a partition and compares it with the backup | no |
+| **Build image** | Assembles a native OpenWrt slot image from your own unit's backup plus a firmware release | no |
+| **Flash OpenWrt** | Writes slot A (slot B, stock, is locked) behind a dry run and an equality gate | **yes** |
+| **Self-test** | Checks tools, loader identity and the patched mtkclient | no |
+| **UART monitor** | Captures the serial console to a log the guarded tools require | no |
+| **Stock SSH access** | Sets up key-only SSH on the stock system (needed to change the boot order) | **yes** |
+| **Rescue (slot B)** | Restores the stock slot | **yes** |
+
+## Install and run
+
+Two flavours of `X28 Flasher.app`:
+
+| | Packaged | From the checkout |
+|---|---|---|
+| Needs | nothing: Python, mtkclient, libusb and the page are inside | Python 3.10+, Homebrew (for libusb) |
+| Window | native (small Swift WKWebView) | your browser |
+| Can write | **no**, read-only until the [#272](https://github.com/mralinp/x28-flasher/issues/272) gate exists | yes |
+| Start | double-click `dist/X28 Flasher.app` | double-click `X28 Flasher.app`, or `python3 tools/x28-flasher/x28_flasher.py` |
+
+```bash
 git clone git@github.com:mralinp/x28-flasher.git
-for t in tools/recovery/test_*.py tools/x28-flasher/test_*.py; do python3 "$t"; done
+cd x28-flasher
+python3 tools/recovery/setup_mtkclient.py     # once: the pinned, patched mtkclient (the page's Setup box does this too)
+python3 tools/x28-flasher/x28_flasher.py      # opens the page in your browser
+python3 tools/x28-flasher/x28_flasher.py wizard   # the same steps as a terminal menu
 ```
 
-This repo does not depend on the firmware repo's code: images, userspace, feed packages and the overlay are downloaded from its releases and hash-checked. The vendor download agent and any firmware dumps are never committed.
-Licence: GPL-2.0-only.
+Only this computer's browser can reach the page; its **Quit** button stops the flasher. Log:
+`~/Library/Logs/x28-flasher.log`.
 
-## Using it
+You also need the Quectel download agent (`DA_BR.bin`). It is not in this repo; choose it in the page, or bake it into
+your own build (see [Build](#build-the-app)).
 
-Open `X28 Flasher.app` (double-click it in Finder). The packaged app is a native window (a small Swift WKWebView, built by `build_app.py` when `swiftc` is available) around the page; closing the window quits it. The app from the checkout starts the flasher in the background and shows the page in your browser; the page's **Quit** button stops it. Log: `~/Library/Logs/x28-flasher.log`.
+## The steps
 
-Two flavours of the app:
+1. **Connect**: power off, wait 10 s, power on.
+2. **Backup**: do this first and keep the copy off the computer you flash from.
+3. **Build image**: pick a firmware release; the overlay and userspace are downloaded and hash-checked.
+4. **Flash OpenWrt**: dry run, then the real write.
+5. **Read & verify**: confirm what landed.
+6. **Stock SSH access / Rescue**: only when you need them.
 
-- **Packaged** (`python tools/x28-flasher/build_binary.py --home bh --out dist && python tools/x28-flasher/build_app.py` gives `dist/X28 Flasher.app`; see the CI steps for `bh`): holds Python, mtkclient, libusb and the page, so nothing needs installing. Add `--loader /path/to/DA_BR.bin` to `build_binary.py` to put your download agent inside the app too (checked against the expected SHA-256; it is Quectel's file, so it is never committed or built by CI, and an app built with it is for your own use); without it you choose the file in the page. It is read-only: Connect, Backup, Read & verify, Self-test, UART and Build image work; writing steps are refused until the #272 gate exists.
-- **From the checkout** (`X28 Flasher.app` in the repo, or `python3 tools/x28-flasher/x28_flasher.py`): needs Python 3.10 or newer; the page's Setup box installs libusb (needs Homebrew) and the pinned, patched mtkclient, then restarts itself. This one can write (Flash OpenWrt, Stock SSH access, Rescue). `x28_flasher.py wizard` is the terminal menu.
+Details, prompts and recovery are in **[docs/USAGE.md](docs/USAGE.md)**.
 
-The page walks you through Connect (power off, 10 s, power on), then Backup, Build image, Flash OpenWrt, Read & verify, Self-test, UART monitor, Stock SSH access and Rescue (slot B). Every step runs the guarded tools; a step that writes needs the risk checklist ticked and the tool's own typed phrase. Only this computer's browser can reach the page. The packaged binary is read-only (#272). Telnet is not offered: `stock_access.py` sets up key-only SSH.
+## Safety model
+
+- Every writing tool does a **dry run first**, then asks for its own **typed phrase** per step.
+- The page needs the **risk checklist** ticked before a writing step starts.
+- Receipts bind each step to the hashes of the recovery tools, so those files must not change mid-chain.
+- The UART capture must have been updated within 60 s, or the guarded tools refuse.
+- Nothing in the front end writes flash itself; it only hands over to `tools/recovery/`.
+- The vendor download agent and any firmware dumps are **never committed** (`.gitignore`) and never built by CI.
+- Telnet is not offered; `stock_access.py` sets up key-only SSH.
+
+## Build the app
+
+```bash
+python3 -m venv bh/venv    # then see .github/workflows/ci.yml for the pinned mtkclient checkout in bh/src and its pip packages
+bh/venv/bin/python tools/x28-flasher/build_binary.py --home bh --out dist
+python3 tools/x28-flasher/build_app.py        # dist/X28 Flasher.app (native window when swiftc is available)
+```
+
+Add `--loader /path/to/DA_BR.bin` to `build_binary.py` to put your download agent inside the app (checked against the
+expected SHA-256). It is Quectel's file: an app built with it is for your own use, do not share it.
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `tools/recovery/` | backup and verify, mtkclient setup, USB reads, guarded flash sessions. Hash-bound: do not edit mid-chain |
+| `tools/x28-flasher/` | the page (`gui/`), terminal wizard, app and PyInstaller builds |
+| `tools/build/` | image assembly: `stage_native.py`, `first_boot.py`, `ab_guard.py`, `package_ubi.py`, `stock_access.py` |
+| `tools/firmware/` | the tools container and partition inventory |
+| `docs/` | [usage guide](docs/USAGE.md), assets |
+
+`first_boot.py` reads the firmware's package files from the release's `x28-overlay-*.tar.gz` (the page downloads it; set
+`X28_OVERLAY` or extract it to `overlay/` to run the scripts or tests by hand).
+
+## Tests
+
+```bash
+for t in tools/build/test_*.py tools/recovery/test_*.py tools/x28-flasher/test_*.py; do python3 "$t" || break; done
+```
+
+CI runs them on macOS arm64 and Linux x86_64, then builds the read-only binary.
+
+## License
+
+GPL-2.0-only, see [LICENSE](LICENSE).
