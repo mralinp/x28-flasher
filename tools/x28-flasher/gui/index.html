@@ -335,6 +335,7 @@ function viewBuild() {
   <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
     <label class="f"><span class="lbl">Backup to build from</span><span style="display:flex;gap:8px">${sel("bd-backup", b.backups, "Folder of a finished backup")}<button type="button" class="btn" data-act="browse" data-target="bd-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
     <label class="f"><span class="lbl">Version to build</span>${S.releases ? `<select id="bd-tag">${S.releases.map((r, i) => `<option value="${esc(r.tag)}" ${i === pick ? "selected" : ""}>${esc(r.tag)}  ${r.beta ? "beta" : "stable"}  ·  ${esc(r.date)}${i === 0 ? "  ·  newest" : ""}${i === pick && !r.beta ? "  ·  recommended" : ""}</option>`).join("")}</select><span class="mut" style="font-size:12.5px">${S.releases.some((r) => !r.beta) ? "Stable releases are tested; beta ones are pre-releases. The newest stable one is selected." : "Every release is still a beta; the newest is selected."}</span>` : `<span class="mut">${S.relError ? esc(S.relError) : "Loading the release list from GitHub…"}</span>`}</label>
+    <div><button type="button" class="btn" data-act="refresh-releases">Refresh versions</button></div>
     ${blocked ? `<div class="warn">${esc(blocked)}</div>` : ""}
     <div><button class="primary" id="bd-go" data-act="build" ${busy() || (!b.docker || !b.backups.length) ? "disabled" : ""}>Build image</button></div>
   </div>
@@ -465,6 +466,7 @@ document.addEventListener("click", async (e) => {
     if (await start(t.dataset.run, { accept: true })) drawView();
     return;
   }
+  if (a === "refresh-releases") { S.releases = null; S.relError = ""; return drawView(); }  // viewBuild fetches the list again
   if (a === "confirm-write") return $("#risk").showModal();
   if (a === "risk-cancel") return $("#risk").close();
   if (a === "stop") { const j = S.job; await api(`/api/job/${j.id}/stop`, { force: false }); return; }
