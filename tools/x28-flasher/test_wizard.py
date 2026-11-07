@@ -132,7 +132,7 @@ class PlainPromptTests(unittest.TestCase):
         home = Path(tempfile.mkdtemp())
         (home / ".ssh").mkdir()
         for n in ("a.pub", "router.pub"):
-            (home / ".ssh" / n).write_text("ssh-ed25519 AAAA x")
+            (home / ".ssh" / n).write_text("ssh-rsa AAAA x")
         cfg = wizard.Config(home / "c.json")
         cfg.set("build_key", str(home / ".ssh/router.pub"))
         seen = []
@@ -141,6 +141,18 @@ class PlainPromptTests(unittest.TestCase):
             key = wizard.choose_key(ui, cfg)
         self.assertEqual(key, str(home / ".ssh/router.pub"))  # remembered key is offered first, but it is still asked
         self.assertEqual(seen[0][-1], None)
+
+    def test_choose_key_makes_an_rsa_pair_when_there_is_none(self):
+        home = Path(tempfile.mkdtemp())
+        (home / ".ssh").mkdir()
+        (home / ".ssh" / "e.pub").write_text("ssh-ed25519 AAAA x")  # dropbear in the stock slot cannot use it
+        cfg = wizard.Config(home / "c.json")
+        ui = types.SimpleNamespace(select=lambda msg, choices: self.fail("nothing to choose from"))
+        with mock.patch.object(wizard.Path, "home", return_value=home), __import__("contextlib").redirect_stdout(__import__("io").StringIO()):
+            key = wizard.choose_key(ui, cfg)
+        self.assertEqual(key, str(home / ".ssh/x28_rsa.pub"))
+        self.assertTrue(Path(key).read_text().startswith("ssh-rsa "))
+        self.assertEqual((home / ".ssh/x28_rsa").stat().st_mode & 0o077, 0)
 
 
 class FancySelectTests(unittest.TestCase):

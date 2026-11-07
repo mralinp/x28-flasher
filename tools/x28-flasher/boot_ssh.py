@@ -12,7 +12,7 @@ import tempfile
 import time
 from pathlib import Path
 
-HOSTS = {"a": ("192.168.70.1", 22), "b": ("192.168.0.1", 2222)}  # where the unit answers when it runs slot A (OpenWrt) or B (vendor)
+HOSTS = [("192.168.70.1", 22), ("192.168.0.1", 22), ("192.168.0.1", 2222)]  # where the unit answers when it runs slot A (OpenWrt) or B (vendor)
 REC = 2048 + 8  # A's four bytes, then B's four, in each block
 PRIO = {"a": 0x0f, "b": 0x0e}  # the higher one boots; slot A boots with A=0f, B=0e
 BACKUPS = Path.home() / ".x28-flasher" / "misc-backups"
@@ -32,7 +32,8 @@ def ssh(target, cmd, stdin=None, timeout=60, pw=""):
     askpass.chmod(stat.S_IRWXU)
     env = {**os.environ, "SSH_ASKPASS": str(askpass), "SSH_ASKPASS_REQUIRE": "force", "DISPLAY": ":0", "X28_PW": pw}
     argv = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
-            "-o", "ConnectTimeout=5", "-o", "NumberOfPasswordPrompts=1", "-o", "PreferredAuthentications=publickey,password,keyboard-interactive"]
+            "-o", "ConnectTimeout=5", "-o", "PubkeyAcceptedAlgorithms=+ssh-rsa", "-o", "HostKeyAlgorithms=+ssh-rsa",  # the stock dropbear only knows ssh-rsa
+             "-o", "NumberOfPasswordPrompts=1", "-o", "PreferredAuthentications=publickey,password,keyboard-interactive"]
     for key in (Path.home() / ".ssh" / "router",):
         if key.is_file():
             argv += ["-i", str(key)]
@@ -74,7 +75,7 @@ def targets(addr=""):
     """The address typed on the page ("host" or "host:port"), else where the unit answers on slot A, then on slot B."""
     addr = (addr or "").strip()
     if not addr:
-        return list(HOSTS.values())
+        return list(HOSTS)
     host, _, port = addr.partition(":")
     if not host or not (port.isdigit() or not port) or any(c in host for c in " ;'\"$`"):
         raise BootError("the address must look like 192.168.1.1 or 192.168.1.1:2222")

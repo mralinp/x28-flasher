@@ -115,7 +115,7 @@ const MENU = [
   ["read", "Read & verify", "Read one partition from the board and compare it with your backup. Writes nothing."],
   ["test", "Self-test", "Check setup, the patched library and a real read. Writes nothing."],
   ["uart", "UART monitor", "Capture the serial console to a log. A flash needs it unless you have no adapter."],
-  ["access", "Stock SSH access", "Key-only SSH on the stock firmware (slot B). Builds the image from your backup, rehearses, then writes. No Telnet."],
+  ["access", "Root access", "Root SSH (key only, port 22) on the stock firmware in slot B, with the key you choose or a new one. Builds from a slot B image, rehearses, then writes."],
   ["rescue", "Rescue (slot B)", "Undo a stock SSH write: put the original slot B tail back from your backup."],
 ];
 const S = { screen: "home", st: null, job: null, es: null, pw: null, uartTimer: null };
@@ -383,7 +383,7 @@ function viewBoot() {
   const sel = b.sel || (b.info && b.info.boot), on = sel === "b", ready = b.info && !b.working, changed = ready && sel !== b.info.boot;
   return `${head("Boot order", "Which slot the modem boots at its next power-up: A is the OpenWrt image, B is the vendor firmware. Needs the modem running and reachable over SSH; the USB connection is not used.")}
   <div class="box" style="padding:18px;display:grid;gap:16px;max-width:760px">
-    <label class="f"><span class="lbl">Modem address (empty: try 192.168.70.1, then the vendor's 192.168.0.1:2222)</span><input type="text" id="boot-addr" value="${esc(addr())}" placeholder="192.168.70.1 or 192.168.1.1:22"></label>
+    <label class="f"><span class="lbl">Modem address (empty: try 192.168.70.1, then the vendor's 192.168.0.1)</span><input type="text" id="boot-addr" value="${esc(addr())}" placeholder="192.168.70.1 or 192.168.1.1:22"></label>
     <label class="f"><span class="lbl">Root password (only if the modem has one and no key is installed; not saved)</span><input type="password" id="boot-pw" value="${esc(b.pw || "")}" autocomplete="off"></label>
     ${b.error ? `<div class="warn">${esc(b.error)}</div>` : b.info ? "" : `<div class="mut">Asking the modem…</div>`}
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
@@ -421,7 +421,7 @@ function viewBuild() {
 const WRITES = ["flash", "access", "rescue"];
 const RISK = {
   flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit (if not, cancel and take one first with Backup)", "I will keep the modem powered and the USB cable connected until it finishes", "The tool will ask you to type an exact phrase and to power-cycle the modem; I will do both myself", "No UART log is kept during a flash; start the UART monitor separately to watch the boot", "Without a rehearsal the first write to slot A is the real one", "The flash checks only the slot it writes (read back and compared); it does not read the rest of the board before or after"]],
-  access: ["Stock SSH access", "Builds a key-only SSH candidate for slot B from your backup, rehearses it, then writes it. Only the overlay tail of rootfs_b changes.", ["The backup was taken just now, with the unit idle", "I will keep the modem powered and the USB cable connected until it finishes"]],
+  access: ["Root access", "Builds a key-only SSH candidate for slot B from your backup, rehearses it, then writes it. Only the overlay tail of rootfs_b changes.", ["The backup was taken just now, with the unit idle", "I will keep the modem powered and the USB cable connected until it finishes"]],
   rescue: ["Rescue (slot B)", "Restores the original slot B overlay tail from your backup after a write. Each try is a manual run.", ["I have the backup this unit was written from", "I will keep the modem powered and the USB cable connected until it finishes"]],
 };
 const leaf = (p) => p.split("/").filter(Boolean).pop();

@@ -236,6 +236,29 @@ def build(fl, ui, cfg):
         return 1
 
 
+def choose_key(ui, cfg):
+    """The RSA key that goes into the stock slot (dropbear there takes ssh-rsa): picked from ~/.ssh each time, the last choice first; a new pair is made on request or when there is none."""
+    import subprocess
+    ssh = Path.home() / ".ssh"
+    keys = sorted(str(p) for p in ssh.glob("*.pub") if p.read_text().startswith("ssh-rsa "))
+    last = cfg.get("build_key")
+    keys.sort(key=lambda k: k != last)
+    choice = ui.select("Which RSA SSH public key gets root access? (it is the only key that can log in)",
+                       [(k, k) for k in keys] + [("Make a new key pair (~/.ssh/x28_rsa)", "new"), ("Another file...", None)]) if keys else "new"
+    if choice == "new":
+        ssh.mkdir(mode=0o700, exist_ok=True)
+        path = ssh / "x28_rsa"
+        if not path.exists() and subprocess.call(["ssh-keygen", "-q", "-t", "rsa", "-b", "3072", "-N", "", "-C", "x28-root-access", "-f", str(path)]):
+            raise RuntimeError("ssh-keygen failed")
+        choice = str(path) + ".pub"
+        print(f"  Using {choice} (its private key is {path}, no passphrase)")
+    key = choice or ui.text("Path of the SSH public key").strip()
+    while not Path(key).is_file():
+        key = ui.text(f"not found: {key}. Path of the SSH public key").strip()
+    cfg.set("build_key", key)
+    return key
+
+
 def build_local(fl, ui, cfg, dest, given):
     import images
     import shutil

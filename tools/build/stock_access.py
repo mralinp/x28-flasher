@@ -23,12 +23,12 @@ from pathlib import Path
 PEB, MIN_IO, ROOTFS_DATA, LAYOUT = 0x40000, 4096, 1, 0x7fffefff
 # Runs in the background from the top of rc.local, so nothing before it can hold SSH back. The host key is made on the unit.
 SSH_SCRIPT = """#!/bin/sh
-# x28 stock access (x28-flasher#5): key-only SSH on port 2222 via the stock multi-call binary
+# x28 stock access (x28-flasher#5): key-only SSH on ports 22 and 2222 via the stock multi-call binary
 K=/etc/dropbear/authorized_keys
 H=/etc/dropbear/dropbear_rsa_host_key
 [ -s "$K" ] || exit 0
 [ -s "$H" ] || { rm -f "$H"; /usr/sbin/msn dropbearkey -t rsa -s 2048 -f "$H" >/dev/null 2>&1; }  # stock ships an empty file; dropbearkey will not overwrite
-exec /usr/sbin/msn dropbear -r "$H" -s -p 2222 -P /var/run/x28-ssh.pid
+exec /usr/sbin/msn dropbear -r "$H" -s -p 22 -p 2222 -P /var/run/x28-ssh.pid
 """
 HOOK = "\n# x28 stock access (x28-flasher#5)\n[ -f /etc/x28-ssh.sh ] && sh /etc/x28-ssh.sh &\n"
 
@@ -151,7 +151,7 @@ def main():
     report = {"source_sha256": hashlib.sha256(raw).hexdigest(), "output_sha256": hashlib.sha256(new).hexdigest(),
               "changed_pebs": changed, "untouched_pebs": len(kept), "overlay_entries": len(listing),
               "overlay": "the unit's own overlay files and directories plus the SSH pieces (whiteouts and trusted.overlay xattrs not carried over)",
-              "ssh": "stock msn dropbear -s -p 2222 from /etc/x28-ssh.sh (background, host key made on the unit), key only",
+              "ssh": "stock msn dropbear -s -p 22 -p 2222 from /etc/x28-ssh.sh (background, host key made on the unit), key only",
               "public_key_sha256": hashlib.sha256(key.encode()).hexdigest(),
               "mkfs_ubifs": subprocess.run(["mkfs.ubifs", "--version"], capture_output=True, text=True).stdout.strip()}
     (args.output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
