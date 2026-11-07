@@ -26,6 +26,16 @@ class RunCommandTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual((dict(os.environ), os.getcwd(), sys.argv[:], sys.path[:]), before)
 
+    def test_a_tool_the_session_already_imported_runs_as_that_module_not_as_a_second_copy(self):
+        import types
+        folder = Path(tempfile.mkdtemp())
+        (folder / "held_tool.py").write_text("raise SystemExit(7)\n")  # what run_path would do: must not run
+        stub = types.ModuleType("held_tool")
+        stub.main = lambda: sys.exit(0)
+        sys.modules["held_tool"] = stub
+        self.addCleanup(sys.modules.pop, "held_tool", None)
+        self.assertEqual(session_host.run_command(None, {"kind": "script", "script": str(folder / "held_tool.py")}), 0)
+
     def test_a_stop_propagates(self):
         with self.assertRaises(KeyboardInterrupt):
             self.run_script("raise KeyboardInterrupt\n")

@@ -34,7 +34,13 @@ def run_command(fl, cmd):
         script = str(Path(cmd["script"]).resolve())
         sys.argv = [script, *cmd.get("argv", [])]
         sys.path.insert(0, str(Path(script).parent))
-        runpy.run_path(script, run_name="__main__")
+        loaded = sys.modules.get(Path(script).stem)
+        if loaded is not None and hasattr(loaded, "main"):
+            # A tool this process has already imported (read_by_name: the session's own connect() lives there) runs as that module. Run as
+            # __main__ it would be a second copy with its own idea of the connection, and would connect all over again.
+            loaded.main()
+        else:
+            runpy.run_path(script, run_name="__main__")
         return 0
     except SystemExit as done:
         if isinstance(done.code, str):
