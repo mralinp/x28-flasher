@@ -342,7 +342,7 @@ function viewBuild() {
 }
 const WRITES = ["flash", "access", "rescue"];
 const RISK = {
-  flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit and a second copy of it", "I will keep the modem powered and the USB cable connected until it finishes", "The tool will ask you to type an exact phrase and to power-cycle the modem; I will do both myself"]],
+  flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit (if not, cancel and take one first with Backup)", "I will keep the modem powered and the USB cable connected until it finishes", "The tool will ask you to type an exact phrase and to power-cycle the modem; I will do both myself"]],
   access: ["Stock SSH access", "Builds a key-only SSH candidate for slot B from your backup, rehearses it, then writes it. Only the overlay tail of rootfs_b changes.", ["The backup was taken just now, with the unit idle", "I will keep the modem powered and the USB cable connected until it finishes"]],
   rescue: ["Rescue (slot B)", "Restores the original slot B overlay tail from your backup after a write. Each try is a manual run.", ["I have the backup this unit was written from", "I will keep the modem powered and the USB cable connected until it finishes"]],
 };
@@ -350,7 +350,7 @@ const leaf = (p) => p.split("/").filter(Boolean).pop();
 const optionList = (items, label = leaf) => items.map((v) => `<option value="${esc(v)}">${esc(label(v))}</option>`).join("");
 function flashForm() {
   const st = S.st, b = st.build, uart = st.uart && st.uart.running;
-  const blocked = !b.images.length ? "No built image yet. Build one first." : !b.backups.length ? "No finished backup found. Run Backup to the end first." : "";
+  const blocked = !b.images.length ? "No built image yet. Build one first." : !b.backups.length ? "No finished backup found. Take a backup first (Backup in the sidebar); a failed flash is undone from it." : "";
   return `<div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
     <div><span class="lbl">Slot to flash</span>
       <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap">
@@ -358,9 +358,8 @@ function flashForm() {
         <label class="chk" style="border:1px solid var(--line);border-radius:10px;padding:10px 14px;opacity:.55"><input type="radio" name="fl-slot" value="b" disabled><span><b>Slot B</b> · locked. A full image there would replace the stock firmware; it needs its own reviewed tool.</span></label>
       </div></div>
     <label class="f"><span class="lbl">Image to flash</span><select id="fl-image">${optionList(b.images)}</select></label>
-    <label class="f"><span class="lbl">Image now on slot A (leave on "none" for a unit still on stock)</span><select id="fl-base"><option value="">None, the unit is on stock</option>${optionList(b.images)}</select></label>
     <label class="f"><span class="lbl">Backup of this unit</span><span style="display:flex;gap:8px"><select id="fl-backup">${optionList(b.backups, (v) => v)}</select><button type="button" class="btn" data-act="browse" data-target="fl-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
-    <label class="f"><span class="lbl">Second copy of the backup archive (complete-captured-partitions.tar, ideally on another drive)</span><span style="display:flex;gap:8px"><input type="text" id="fl-copy" value="${esc(b.copies[0] || "")}" placeholder="Choose the copied .tar"><button type="button" class="btn" data-act="browse" data-target="fl-copy" data-kind="file" style="flex:none;height:40px">Browse…</button></span></label>
+    <details><summary class="mut" style="cursor:pointer">This unit already runs an OpenWrt image from this flasher</summary><div style="margin-top:8px"><label class="f"><span class="lbl">Image now on slot A (otherwise leave on "none")</span><select id="fl-base"><option value="">None, the unit is on stock</option>${optionList(b.images)}</select></label></div></details>
     <label class="f"><span class="lbl">Run</span><select id="fl-mode"><option value="identical">Rehearsal: write the image, read it back, compare</option>${b.rehearsals.length ? `<option value="write">Write (builds on a verified rehearsal from the last 24 h)</option>` : ""}</select></label>
     ${b.rehearsals.length ? `<label class="f"><span class="lbl">Rehearsal to build the write on</span><select id="fl-prior">${optionList(b.rehearsals)}</select></label>` : `<div class="mut">The write unlocks after a successful rehearsal.</div>`}
     <label class="chk"><input class="sw" type="checkbox" id="fl-nossh"><span>No SSH to this modem (the USB read of misc replaces the live-slot check)</span></label>
@@ -486,8 +485,7 @@ document.addEventListener("click", async (e) => {
     S.job = null;
     const params = { accept: true };
     if (t.dataset.run === "flash") {
-      Object.assign(params, { slot: "a", candidate: $("#fl-image").value, base: $("#fl-base").value, backup: $("#fl-backup").value, copy: $("#fl-copy").value,
-        mode: $("#fl-mode").value, prior: $("#fl-prior")?.value, no_ssh: $("#fl-nossh").checked, no_uart: $("#fl-nouart").checked });
+      Object.assign(params, { slot: "a", candidate: $("#fl-image").value, base: $("#fl-base").value, backup: $("#fl-backup").value, mode: $("#fl-mode").value, prior: $("#fl-prior")?.value, no_ssh: $("#fl-nossh").checked, no_uart: $("#fl-nouart").checked });
     }
     if (await start(t.dataset.run, params)) drawView();
     return;

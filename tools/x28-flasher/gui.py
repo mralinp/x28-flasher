@@ -181,8 +181,8 @@ def build_command(fl, action, params, loader):
             raise ValueError("the image now on slot A is not a built image folder")
         if problem := wizard.backup_problem(str(params.get("backup") or "")):
             raise ValueError(problem)
-        if not Path(str(params.get("copy") or "")).is_file():
-            raise ValueError("choose the second copy of the backup archive (complete-captured-partitions.tar, on another drive)")
+        if params.get("copy") and not Path(str(params["copy"])).is_file():
+            raise ValueError("the second copy of the backup archive was not found")
         if params["mode"] == "write" and str(params.get("prior") or "") not in [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe")]:
             raise ValueError("a write needs a verified rehearsal from the last 24 hours: run the rehearsal first")
         if params.get("accept") is not True:
@@ -281,8 +281,7 @@ class App:
         backups = sorted({str(d) for d in found if wizard.backup_problem(d) is None})
         return {"backups": backups, "docker": bool(shutil.which("docker")),
                 "images": [str(d) for d in wizard.image_dirs(PRIVATE / "build")] if (PRIVATE / "build").is_dir() else [],
-                "rehearsals": [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe")] if (PRIVATE / "usb-probe").is_dir() else [],
-                "copies": self.fl.find_backup_copies()}
+                "rehearsals": [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe")] if (PRIVATE / "usb-probe").is_dir() else []}
 
     def state(self):
         from common import DEFAULT_BACKUP, PRIVATE

@@ -131,8 +131,8 @@ def stop_capture():
 
 
 def flash_cmd(args, uart, backup_copy):
-    cmd = ["rootfs_a", args.mode, "--write", *tool_paths(args),
-           "--candidate-dir", args.candidate_dir, "--backup-copy", str(backup_copy)]
+    cmd = ["rootfs_a", args.mode, "--write", *tool_paths(args), "--candidate-dir", args.candidate_dir]
+    cmd += ["--backup-copy", str(backup_copy)] if backup_copy else []
     cmd += ["--no-uart"] if getattr(args, "no_uart", False) else ["--uart-log", str(uart)]
     for flag in ("base_dir", "prior_identical"):
         if getattr(args, flag):
@@ -144,7 +144,8 @@ def flash_cmd(args, uart, backup_copy):
 
 def flash_b_cmd(args, uart, backup_copy):
     """slot_b_entry.py: the rootfs_b overlay tail (stock SSH access). write needs a rehearsal, restore a finished write run."""
-    cmd = [args.mode, "--write", *tool_paths(args), "--candidate-dir", args.candidate_dir, "--backup-copy", str(backup_copy)]
+    cmd = [args.mode, "--write", *tool_paths(args), "--candidate-dir", args.candidate_dir]
+    cmd += ["--backup-copy", str(backup_copy)] if backup_copy else []
     cmd += ["--no-uart"] if getattr(args, "no_uart", False) else ["--uart-log", str(uart)]
     for flag in ("prior_identical", "resume"):
         if getattr(args, flag, None):
@@ -186,10 +187,7 @@ def cmd_flash(args, ui=None, tool="slot_entry.py", build_cmd=None):
     if not loader.is_file():
         sys.exit(f"download agent missing: {loader}")
     ui = ui or Ui()
-    copies = find_backup_copies()
-    copy = args.backup_copy or (ui.select("Second backup copy (on a different drive)", [(c, c) for c in copies]) if copies else None)
-    if not copy:
-        sys.exit(f"no second backup copy found (looked for */{BACKUP_NAME}); pass --backup-copy")
+    copy = args.backup_copy  # a second copy is optional; the tools check it when given
     cap, uart = (None, None) if getattr(args, "no_uart", False) else start_capture(ui)
     print("\nNext: the tool shows the exact phrase to type (you type it yourself), then asks you to unplug the\n"
           "router for 10 s or more and plug it back in with no buttons. No retry, no automatic reboot.\n")
