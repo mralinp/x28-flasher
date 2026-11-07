@@ -86,6 +86,12 @@ pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 ui-monospa
       <section id="device" style="display:flex;flex-direction:column;gap:14px"></section>
       <div style="height:1px;background:var(--line)"></div>
       <nav id="nav" aria-label="Tasks" style="display:flex;flex-direction:column;gap:2px"></nav>
+      <section style="margin-top:auto;display:grid;gap:8px;padding-top:14px;border-top:1px solid var(--line)" aria-label="Support">
+        <span class="mut">Made with <span style="color:var(--bad)" aria-label="love">&#9829;</span> by mralinp</span>
+        <span class="lbl">Support, any EVM chain</span>
+        <code id="donate" class="mono" style="font-size:11px;overflow-wrap:anywhere;user-select:all">0x6743d8fe71f18b3101f3086e8d9f8d272d0f7618</code>
+        <button class="btn" data-act="copy-donate">Copy address</button>
+      </section>
     </aside>
     <main id="view"></main>
   </div>
@@ -545,6 +551,13 @@ document.addEventListener("click", async (e) => {
     return;
   }
   if (a === "disconnect") { try { await api("/api/session", {}); } catch (er) { alert(er.message); } await refresh(); return drawView(); }
+  if (a === "copy-donate") {
+    const addr = $("#donate").textContent;
+    try { await navigator.clipboard.writeText(addr); t.textContent = "Copied"; }
+    catch (er) { const r = document.createRange(); r.selectNodeContents($("#donate")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); t.textContent = "Selected: press copy"; }
+    setTimeout(() => { t.textContent = "Copy address"; }, 2000);
+    return;
+  }
   if (a === "boot-reload") { try { localStorage.setItem("bootaddr", $("#boot-addr").value.trim()); } catch (e) { /* not saved */ } const pw = $("#boot-pw").value; S.boot = { pw }; return drawView(); }
   if (a === "boot-pick") { S.boot.sel = (S.boot.sel || S.boot.info.boot) === "a" ? "b" : "a"; return drawView(); }
   if (a === "boot-toggle") { S.boot.pw = $("#boot-pw").value; try { localStorage.setItem("bootaddr", $("#boot-addr").value.trim()); } catch (e) { /* not saved */ } return $("#risk").showModal(); }
