@@ -177,8 +177,6 @@ def build_command(fl, action, params, loader):
             raise ValueError("choose a rehearsal or the write")
         if not (Path(str(params.get("candidate") or "")) / "rootfs-a-experimental.bin").is_file():
             raise ValueError("choose a built image to flash")
-        if params.get("base") and not (Path(str(params["base"])) / "rootfs-a-experimental.bin").is_file():
-            raise ValueError("the image now on slot A is not a built image folder")
         if problem := wizard.backup_problem(str(params.get("backup") or "")):
             raise ValueError(problem)
         if params.get("copy") and not Path(str(params["copy"])).is_file():
@@ -224,8 +222,8 @@ class App:
                 self.config().set("backup", str(params["out"]).strip())  # Build looks for finished backups here, and beside the usual places
             env = {"X28_RECOVERY": str(self.fl.RECOVERY)}
             if action == "flash":
-                env["X28_FLASH"] = json.dumps({**{k: str(params.get(k) or "") or None for k in ("mode", "candidate", "base", "backup", "copy", "prior")},
-                                               "no_ssh": bool(params.get("no_ssh")), "no_uart": bool(params.get("no_uart")), "loader": loader})
+                env["X28_FLASH"] = json.dumps({**{k: str(params.get(k) or "") or None for k in ("mode", "candidate", "backup", "copy", "prior")},
+                                               "base": None, "no_ssh": True, "no_uart": True, "loader": loader})  # a flash needs neither SSH nor a UART log
             if action == "build":
                 env["X28_BUILD"] = json.dumps({k: str(params[k]) for k in ("backup", "tag")})
             if self.uart and self.uart["cap"].is_alive():
