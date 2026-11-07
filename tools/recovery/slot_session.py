@@ -77,12 +77,14 @@ ROOTFS_B_HEAD = 0x2000000
 MISC_B_SELECTED = re.compile(rb'\x00AB0\xff\xff\xff\xff\x0e\x00\x01[\x00\x01]\x0f\x00\x01[\x00\x01]')  # per-slot priority, tries, successful, verity flag
 
 
-def unit_pins(images):
+def unit_pins(images, boot_order=True):
     """The per-unit pins of a verified backup. images: {partition name: bytes}. Raises unless misc is the stock B-selected record
-    and rootfs_a/rootfs_b/boot_para are full-size and not blank."""
+    and rootfs_a/rootfs_b/boot_para are full-size and not blank. boot_order=False (a plain image flash, which never touches misc) only
+    needs misc to be whole and consistent: which slot boots is the next step's business, not the flash's."""
     misc = images['misc']
-    if len(misc) != 0x100000 or any(not MISC_B_SELECTED.fullmatch(misc[off:off + 16]) for off in MISC_COPIES) \
-            or len({misc[off:off + 16] for off in MISC_COPIES}) != 1:
+    if len(misc) != 0x100000 or len({misc[off:off + 16] for off in MISC_COPIES}) != 1:
+        raise ValueError('misc is not one consistent record in all four copies')
+    if boot_order and any(not MISC_B_SELECTED.fullmatch(misc[off:off + 16]) for off in MISC_COPIES):
         raise ValueError('misc is not the stock B-selected record in all four copies')
     for name, size in (('rootfs_a', 0x4000000), ('rootfs_b', 0x4000000), ('boot_para', 0x200000)):
         if len(images[name]) != size or len(set(images[name])) < 3:  # right size, and not blank (all 0xff or zero)

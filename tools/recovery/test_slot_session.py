@@ -322,6 +322,17 @@ class UnitPinTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             s.unit_pins(short)
 
+    def test_a_flash_does_not_care_which_slot_misc_selects(self):
+        a_selected = bytes.fromhex('00414230ffffffff0f0000000e000101')  # this unit's record: A first, tries 0
+        pins = s.unit_pins(self.images(a_selected), boot_order=False)
+        self.assertEqual(pins['misc'], s.digest(self.images(a_selected)['misc']))
+        with self.assertRaises(ValueError):  # the boot-order step still needs the stock B-selected record
+            s.unit_pins(self.images(a_selected))
+        mixed = self.images(a_selected)
+        mixed['misc'] = mixed['misc'][:s.MISC_COPIES[3]] + s.MISC_BEFORE + mixed['misc'][s.MISC_COPIES[3] + 16:]
+        with self.assertRaises(ValueError):  # misc must still be one consistent record
+            s.unit_pins(mixed, boot_order=False)
+
     def test_blank_short_or_non_ubi_images_are_refused(self):
         for name, bad in (('rootfs_a', b'\xff' * 0x4000000), ('rootfs_a', b'\0' * 0x4000000), ('rootfs_a', b'A' * 64),
                           ('boot_para', b'\xff' * 0x200000), ('rootfs_b', bytes(range(256)) * 0x40000), ('rootfs_b', b'UBI#')):
