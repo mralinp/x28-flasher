@@ -1,51 +1,84 @@
-# Using X28 Flasher
+# X28 Flasher manual
 
 Read the warning in the [README](../README.md#warning) first. The firmware side of every step is documented in
 [zlt-x28-openwrt `docs/RECOVERY.md`](https://github.com/mralinp/zlt-x28-openwrt/blob/main/docs/RECOVERY.md).
 
-## Before you start
+![The app](screenshot.png)
 
-- A **verified backup** of your own unit, stored on a second disk. Nothing here replaces it.
-- A **UART** adapter on the unit's debug pins. The guarded tools refuse to flash unless its log updated in the last 60 s.
-- `DA_BR.bin`, the Quectel download agent (not distributed here).
-- A USB cable to the modem port; the unit powered from its own supply.
+The window has the **device panel** on the left (what the app read from the modem, and Connect / Disconnect), the **steps** under it, and the
+selected step on the right. Only one step runs at a time. A running step keeps running when you look at another page.
+
+## What you need
+
+- A **USB cable** to the modem's USB port and the modem on its own power supply. Stable power matters during any write.
+- `DA_BR.bin`, the vendor download agent. It is not distributed here: choose it once in the app (it is remembered).
+- For a write: a **UART adapter** on the modem's debug pins is recommended (its log is kept with the run). Without one the app asks and the way back
+  from a failed write is a USB restore from your backup.
+- **Docker**, for Build image and Root access (the images are assembled in a container).
+- On Windows and Linux the app opens in your browser; on a Mac it is a native window.
+
+## Which step, in which order
+
+| Step | What it is for | Writes to the modem? | When |
+|---|---|---|---|
+| Connect | Finds the modem over USB and reads what it is | no | first, and after every power cycle |
+| Backup | Saves every partition to this computer, hash-checked | no | first, always, and keep a second copy |
+| Root access | Puts key-only SSH on the stock firmware (slot B) | **yes** (slot B overlay) | once, on a fresh unit, after the Backup |
+| Build image | Assembles the OpenWrt image for your own unit from a release and your backup | no | before a flash |
+| Flash OpenWrt | Writes the image to slot A | **yes** (slot A) | after Build |
+| Boot order | Chooses which slot boots next | **yes** (2 bytes x 4 copies) | after a flash, to boot OpenWrt, or to go back to stock |
+| Read & verify | Reads one partition and compares it with your backup | no | after every write |
+| UART monitor | Records the serial console to a log | no | before a write, if you have an adapter |
 
 ## Connect
 
-Power the unit off, wait **10 s**, power it on. The page tells you when to plug in USB (only for tools that wait for the
-modem). If the unit is not found, repeat the sequence; do not start a write on a flaky connection.
+Power the modem off, wait **10 s**, power it on. The app walks you through it and reads the board (hardware ID, flash, security flags, IMEI,
+serial, MAC). The connection then stays open: every following step uses it, so you do **not** power-cycle again between steps. Press
+**Disconnect** when you are done, and power-cycle the modem to let it boot normally. If the modem is not found, repeat the sequence; never start a
+write on a flaky connection.
 
-## Backup, then Read & verify
+## Backup
 
-**Backup** reads every partition over USB and verifies the hashes. **Read & verify** re-reads one partition by name
-and compares it with the backup, read-only. Run it after every write.
-
-## Build image
-
-Choose a firmware release (the **refresh** button re-fetches the list). The overlay and userspace tarballs are
-downloaded and SHA-256 checked; the image is assembled locally from your backup, so nothing proprietary is published.
-
-## Flash OpenWrt
-
-Only slot A is written; slot B (stock) is locked. The flow is: dry run, tick the risk checklist, type the tool's phrase,
-write, then Read & verify. Booting slot A needs the boot order changed, which is the Boot order page. The packaged app refuses this step.
+Reads all partitions over USB, each twice, and checks the hashes. Choose where to keep it. It can be resumed if it stops. This is the way back
+from almost any mistake: **keep it, and keep a copy on another disk.**
 
 ## Root access
 
-Once, on a fresh unit, right after the Backup. It reads a snapshot of slot B from the modem (proinfo, misc, rootfs_a, rootfs_b and
-boot_para, about 130 MiB; rootfs_a is read so the write can prove slot A stays untouched), builds a key-only SSH image from it, then
-rehearses and writes only slot B's overlay tail. You choose an RSA key from `~/.ssh`, or a new pair (`~/.ssh/x28_rsa`) is made.
-SSH then answers on port 22 (and 2222). Telnet is deliberately not offered.
+For a **fresh unit that still runs the vendor firmware**. It reads a fresh snapshot of slot B from the modem (proinfo, misc, rootfs_a, rootfs_b and
+boot_para, about 130 MiB; rootfs_a is read so the write can prove that slot A stays untouched), builds a key-only SSH image from it, then rehearses
+and writes only slot B's overlay tail. You choose an RSA key from `~/.ssh`, or a new pair (`~/.ssh/x28_rsa`) is made. SSH then answers on port 22
+(and 2222) with that key. Telnet is deliberately not offered. You type a confirmation phrase yourself. Do it once; the stock slot B keeps SSH after.
+
+## Build image
+
+Pick a firmware release. The app downloads that release's assembly bundle (rootfs, userspace, kernel modules), checks its hashes, and assembles the
+slot image locally from your backup, so nothing proprietary is published. The result appears in the Flash page.
+
+## Flash OpenWrt
+
+Writes the built image to **slot A only**; slot B (stock) is locked here. The flow: choose the image and your backup, optionally a **rehearsal** (write
+the unit's own original back and compare, to prove the path), tick the risk checklist, then **type the tool's exact phrase**. Every guard stays: the
+backup must match this unit, the UART log must be fresh unless you said you have none, and slot A's boot counter is checked. Nothing retries and
+nothing reboots the modem by itself. Afterwards run Read & verify.
 
 ## Boot order
 
-A switch between slot A (OpenWrt) and slot B (stock): flip it, press **Change boot order** and accept the risk. It works over SSH on the
-running modem (address and root password are optional fields), saves a copy of the boot partition first and changes two bytes in each of its
-four copies. The change applies at the next power-up; nothing reboots the modem for you.
+A switch between **slot A (OpenWrt)** and **slot B (stock)**. Flip it, press **Change boot order**, accept the risk. It works over SSH on the running
+modem, so the modem must be up and reachable: the address is found for you (192.168.70.1, then the vendor's 192.168.0.1), or type another, and a root
+password if it has one. It saves a copy of the boot partition first and changes two priority bytes in each of its four copies, last copy first, each read
+back. It applies at the next power-up; nothing reboots the modem for you.
+
+## Read & verify
+
+Reads one partition by name and compares it with your backup. Run it after every write. It writes nothing.
 
 ## UART monitor
 
-**UART monitor** keeps a capture running into a log. It is read-only.
+Captures the serial console to a log. Start it before a write if you have an adapter; the guarded tools check that the log is fresh.
+
+## The Support box
+
+At the bottom of the sidebar: the project's EVM address with a QR code. Stars and donations are welcome.
 
 ## Terminal use
 

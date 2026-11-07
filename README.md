@@ -25,6 +25,8 @@ The firmware itself lives in [mralinp/zlt-x28-openwrt](https://github.com/mralin
 not depend on that repo's code: images, userspace, feed packages and the overlay are downloaded from its releases and
 hash-checked.
 
+![X28 Flasher](docs/screenshot.png)
+
 ## What it does
 
 | Step | What happens | Writes flash? |
@@ -73,7 +75,7 @@ your own build (see [Build](#build-the-app)).
 6. **Read & verify**: confirm what landed.
 7. **Boot order**: switch which slot boots next, when you need to.
 
-Details, prompts and recovery are in **[docs/USAGE.md](docs/USAGE.md)**.
+Details, prompts and recovery are in **[the manual](docs/USAGE.md)**: what each part is for and how to use it.
 
 ## Safety model
 
@@ -104,7 +106,7 @@ expected SHA-256). It is Quectel's file: an app built with it is for your own us
 | `tools/x28-flasher/` | the page (`gui/`), terminal wizard, app and PyInstaller builds |
 | `tools/build/` | image assembly: `stage_native.py`, `first_boot.py`, `ab_guard.py`, `package_ubi.py`, `stock_access.py` |
 | `tools/firmware/` | the tools container and partition inventory |
-| `docs/` | [usage guide](docs/USAGE.md), assets |
+| `docs/` | [manual](docs/USAGE.md), assets |
 
 `first_boot.py` reads the firmware's package files from the release's `x28-overlay-*.tar.gz` (the page downloads it; set
 `X28_OVERLAY` or extract it to `overlay/` to run the scripts or tests by hand).
