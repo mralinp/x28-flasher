@@ -205,7 +205,7 @@ function drawConsole() {
   if (ctl.dataset.key === key) return;
   ctl.dataset.key = key;
   const asking = /[:?\]]\s*$/.test(j.tail);  // a question is pending (a progress bar is not one)
-  if (running && !WRITES.includes(j.kind) && !asking) {
+  if (running && !(WRITES.includes(j.kind) && asking)) {  // only a flash or Root access ever asks for typing (the phrase, a key); the other steps take their settings from the page
     ctl.innerHTML = `<div style="display:flex;gap:8px;align-items:center"><span class="mut" style="flex:1">Working… nothing to answer.</span><button type="button" class="btn" data-act="stop" title="Same as Ctrl-C in the terminal">Stop</button></div>`;
   } else if (running) {
     ctl.innerHTML = `<form data-act="send" style="display:flex;gap:8px;flex-wrap:wrap">
