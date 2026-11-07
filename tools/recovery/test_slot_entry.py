@@ -105,7 +105,8 @@ class GateTests(unittest.TestCase):
     def test_sequencing_table(self):
         flags = lambda t, m: [p[0] for p in e.PRIOR[(t, m)]]
         self.assertEqual(flags('rootfs_a', 'identical'), [])
-        self.assertEqual(flags('rootfs_a', 'write'), ['prior_identical'])
+        self.assertEqual(flags('rootfs_a', 'write'), [])  # the rehearsal is optional here...
+        self.assertEqual([o[0] for o in e.OPTIONAL_PRIOR[('rootfs_a', 'write')]], ['prior_identical'])  # ...and checked like a required one when given
         self.assertEqual(sorted(flags('misc', 'write')), ['prior_identical', 'prior_rootfs_a'])
         self.assertEqual(flags('misc', 'identical'), ['prior_rootfs_a'])
         self.assertEqual((flags('rootfs_a', 'restore'), flags('misc', 'restore')), (['resume'], ['resume']))

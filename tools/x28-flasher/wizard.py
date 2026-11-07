@@ -366,10 +366,10 @@ def flash(fl, ui, cfg, preset=None):
         prior = given.get("prior")
     elif mode == "write":
         runs = verified_identicals(PRIVATE / "usb-probe", tools=slot_tools_digest())
-        if not runs:
-            print("  " + bad("No verified rehearsal from the last 24 h. Run the rehearsal first."))
-            return 1
-        prior = ui.select("Rehearsal to build on", [(r.name, str(r)) for r in runs])
+        if runs:  # a rehearsal is optional: it proves the write and read-back path first
+            prior = ui.select("Rehearsal to build on", [("None: write without a rehearsal", None)] + [(r.name, str(r)) for r in runs])
+        else:
+            print("  " + paint("No rehearsal from the last 24 h with this version of the app: this write goes without one.", "dim"))
     print(f"\n  {mode}: {candidate}" + (f"  base {base}" if base else ""))
     if not given and not ui.confirm("Continue to the UART and the typed confirmation?", True):
         return 0

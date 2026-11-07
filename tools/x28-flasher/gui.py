@@ -181,8 +181,8 @@ def build_command(fl, action, params, loader):
             raise ValueError(problem)
         if params.get("copy") and not Path(str(params["copy"])).is_file():
             raise ValueError("the second copy of the backup archive was not found")
-        if params["mode"] == "write" and str(params.get("prior") or "") not in [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe", tools=slot_tools_digest())]:
-            raise ValueError("a write needs a verified rehearsal from the last 24 hours, made with this version of the app: run the rehearsal again")
+        if params["mode"] == "write" and params.get("prior") and str(params["prior"]) not in [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe", tools=slot_tools_digest())]:
+            raise ValueError("that rehearsal is older than 24 hours or was made with another version of the app: run it again, or write without one")
         if params.get("accept") is not True:
             raise ValueError("accept the risk first: this writes the board")
         return action_cmd(fl, action)

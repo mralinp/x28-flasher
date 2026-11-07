@@ -356,12 +356,13 @@ function viewBuild() {
 }
 const WRITES = ["flash", "access", "rescue"];
 const RISK = {
-  flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit (if not, cancel and take one first with Backup)", "I will keep the modem powered and the USB cable connected until it finishes", "The tool will ask you to type an exact phrase and to power-cycle the modem; I will do both myself", "No UART log is kept during a flash; start the UART monitor separately to watch the boot"]],
+  flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit (if not, cancel and take one first with Backup)", "I will keep the modem powered and the USB cable connected until it finishes", "The tool will ask you to type an exact phrase and to power-cycle the modem; I will do both myself", "No UART log is kept during a flash; start the UART monitor separately to watch the boot", "Without a rehearsal the first write to slot A is the real one"]],
   access: ["Stock SSH access", "Builds a key-only SSH candidate for slot B from your backup, rehearses it, then writes it. Only the overlay tail of rootfs_b changes.", ["The backup was taken just now, with the unit idle", "I will keep the modem powered and the USB cable connected until it finishes"]],
   rescue: ["Rescue (slot B)", "Restores the original slot B overlay tail from your backup after a write. Each try is a manual run.", ["I have the backup this unit was written from", "I will keep the modem powered and the USB cable connected until it finishes"]],
 };
 const leaf = (p) => p.split("/").filter(Boolean).pop();
-const optionList = (items, label = leaf) => items.map((v) => `<option value="${esc(v)}">${esc(label(v))}</option>`).join("");
+const imageLabel = (p, i) => { const m = leaf(p).match(/(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)$/); return m ? `Built ${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}${i === 0 ? "  ·  newest" : ""}` : leaf(p); };
+const optionList = (items, label = leaf) => items.map((v, i) => `<option value="${esc(v)}">${esc(label(v, i))}</option>`).join("");
 function flashForm() {
   const st = S.st, b = st.build;
   const blocked = !b.images.length ? "No built image yet. Build one first." : !b.backups.length ? "No finished backup found. Take a backup first (Backup in the sidebar); a failed flash is undone from it." : "";
@@ -371,10 +372,10 @@ function flashForm() {
         <label class="chk" style="border:1px solid var(--acc);border-radius:10px;padding:10px 14px"><input type="radio" name="fl-slot" value="a" checked><span><b>Slot A</b> · the image slot. Stock stays on slot B as the fallback.</span></label>
         <label class="chk" style="border:1px solid var(--line);border-radius:10px;padding:10px 14px;opacity:.55"><input type="radio" name="fl-slot" value="b" disabled><span><b>Slot B</b> · locked. A full image there would replace the stock firmware; it needs its own reviewed tool.</span></label>
       </div></div>
-    <label class="f"><span class="lbl">Image to flash</span><select id="fl-image">${optionList(b.images)}</select></label>
+    <label class="f"><span class="lbl">Image to flash</span><select id="fl-image">${optionList(b.images, imageLabel)}</select></label>
     <label class="f"><span class="lbl">Backup of this unit</span><span style="display:flex;gap:8px"><select id="fl-backup">${optionList(b.backups, (v) => v)}</select><button type="button" class="btn" data-act="browse" data-target="fl-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
-    <label class="chk"><input class="sw" type="checkbox" id="fl-rehearse" checked ${b.rehearsals.length ? "" : "disabled"}><span><b>Rehearsal</b> · write the image, read it back and compare. Turn it off for the real write${b.rehearsals.length ? "." : b.stale_rehearsals ? "; your last rehearsal was made with an older version of the app, so run it again." : "; that unlocks after a successful rehearsal."}</span></label>
-    ${b.rehearsals.length ? `<label class="f" id="fl-prior-row" style="display:none"><span class="lbl">Rehearsal the write builds on (verified, from the last 24 h)</span><select id="fl-prior">${optionList(b.rehearsals)}</select></label>` : ""}
+    <label class="chk"><input class="sw" type="checkbox" id="fl-rehearse" checked><span><b>Rehearsal</b> · write the unit's own original back, read it back and compare: it proves the path before the real write. Optional; turn it off for the real write${b.stale_rehearsals && !b.rehearsals.length ? " (your last rehearsal was made with an older version of the app)" : ""}.</span></label>
+    ${b.rehearsals.length ? `<label class="f" id="fl-prior-row" style="display:none"><span class="lbl">Rehearsal the write builds on (verified, from the last 24 h)</span><select id="fl-prior"><option value="">None: write without a rehearsal</option>${optionList(b.rehearsals)}</select></label>` : ""}
     ${blocked ? `<div class="warn">${esc(blocked)}</div>` : ""}
     <div><button class="primary" data-act="confirm-write" ${blocked || busy() ? "disabled" : ""}>Start…</button></div>
   </div>`;
@@ -497,7 +498,7 @@ document.addEventListener("click", async (e) => {
     S.job = null;
     const params = { accept: true };
     if (t.dataset.run === "flash") {
-      Object.assign(params, { slot: "a", candidate: $("#fl-image").value, backup: $("#fl-backup").value, mode: $("#fl-rehearse").checked ? "identical" : "write", prior: $("#fl-prior")?.value });
+      Object.assign(params, { slot: "a", candidate: $("#fl-image").value, backup: $("#fl-backup").value, mode: $("#fl-rehearse").checked ? "identical" : "write", prior: $("#fl-prior")?.value || "" });
     }
     return openPower(t.dataset.run, params);  // Power off and 10 s first; the job starts when they end
   }

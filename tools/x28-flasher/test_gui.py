@@ -112,9 +112,10 @@ class CommandTests(unittest.TestCase):
             (d / "copy.tar").write_bytes(b"")
             ok = {"slot": "a", "mode": "identical", "candidate": str(d / "img"), "backup": str(d / "bk"), "accept": True}
             self.assertEqual(gui.build_command(FakeFl, "flash", ok, "DA")[-2:], ["run", "flash"])
+            self.assertEqual(gui.build_command(FakeFl, "flash", {**ok, "mode": "write", "prior": ""}, "DA")[-2:], ["run", "flash"])  # a rehearsal is optional
             for bad, regex in (({"slot": "b"}, "locked"), ({"mode": "x"}, "rehearsal"), ({"candidate": str(d)}, "built image"),
                                ({"backup": str(d)}, "ARCHIVE"), ({"copy": str(d / "nope")}, "second copy"), ({"accept": False}, "accept"),
-                               ({"mode": "write", "prior": ""}, "rehearsal")):
+                               ({"mode": "write", "prior": "/not/a/verified/run"}, "older than 24 hours")):
                 with self.assertRaisesRegex(ValueError, regex):
                     gui.build_command(FakeFl, "flash", {**ok, **bad}, "DA")
 

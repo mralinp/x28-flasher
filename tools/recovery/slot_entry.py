@@ -23,12 +23,14 @@ from write_verify import active_slot
 # (target, mode) -> prior runs it consumes: (flag, target, mode, must be verified)
 PRIOR = {
     ('rootfs_a', 'identical'): [],
-    ('rootfs_a', 'write'): [('prior_identical', 'rootfs_a', 'identical', True)],
+    ('rootfs_a', 'write'): [],  # a rehearsal is optional for the rootfs_a write (OPTIONAL_PRIOR); misc still requires its own
     ('rootfs_a', 'restore'): [('resume', 'rootfs_a', 'write', False)],
     ('misc', 'identical'): [('prior_rootfs_a', 'rootfs_a', 'write', True)],
     ('misc', 'write'): [('prior_identical', 'misc', 'identical', True), ('prior_rootfs_a', 'rootfs_a', 'write', True)],
     ('misc', 'restore'): [('resume', 'misc', 'write', False)],
 }
+# Priors a run may use but does not need: when given they are checked exactly like a required one.
+OPTIONAL_PRIOR = {('rootfs_a', 'write'): [('prior_identical', 'rootfs_a', 'identical', True)]}
 MAX_AGE = 86400
 
 
@@ -188,12 +190,13 @@ def main():
     ap.add_argument('--prior-rootfs-a', type=Path, help='verified rootfs_a write run (misc sessions)')
     ap.add_argument('--resume', type=Path, help='stopped or finished write run, restore mode only')
     args = ap.parse_args()
-    wanted = PRIOR[(args.target, args.mode)]
-    for flag, *_ in wanted:
+    required = PRIOR[(args.target, args.mode)]
+    for flag, *_ in required:
         if getattr(args, flag) is None:
             raise ValueError(f'{args.target} {args.mode} requires --{flag.replace("_", "-")}')
+    wanted = required + [o for o in OPTIONAL_PRIOR.get((args.target, args.mode), []) if getattr(args, o[0]) is not None]
     for flag in ('prior_identical', 'prior_rootfs_a', 'resume'):
-        if getattr(args, flag) is not None and flag not in [w[0] for w in wanted]:
+        if getattr(args, flag) is not None and flag not in [w[0] for w in OPTIONAL_PRIOR.get((args.target, args.mode), []) + required]:
             raise ValueError(f'--{flag.replace("_", "-")} is not valid for {args.target} {args.mode}')
     if args.candidate_dir is None:
         raise ValueError('--candidate-dir (the package_ubi output of the approved rootfs_a) is required for every session')
