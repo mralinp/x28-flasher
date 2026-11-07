@@ -381,7 +381,7 @@ function viewWrite(action) {
       <div>• The way back from a failed write is a USB restore from your backup.</div>
       <div>• The tool still asks for its exact confirmation phrase, which you type yourself.</div>
     </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px"><button class="btn" data-act="risk-cancel">Cancel</button><button class="primary" data-act="write" data-run="${action}">I accept the risk, start</button></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:20px"><button class="btn" data-act="risk-cancel" style="height:44px;padding:0 22px">Cancel</button><button class="primary" data-act="write" data-run="${action}">I accept the risk, start</button></div>
   </dialog>`}
   ${started ? consoleHtml() : ""}`;
 }
