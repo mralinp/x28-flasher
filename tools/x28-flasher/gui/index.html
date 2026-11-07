@@ -45,6 +45,10 @@ dd{margin:0;text-align:right;overflow-wrap:anywhere}
 label.f{display:flex;flex-direction:column;gap:8px}
 input[type=text],select{height:40px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:#0a0c10;font-size:12.5px;width:100%}
 .opt{display:block;width:100%;padding:14px 16px;border-radius:10px;border:1px solid var(--line2);background:var(--card);text-align:left}
+.tog{width:48px;height:26px;padding:3px;border-radius:999px;border:1px solid var(--line2);background:#0a0c10;flex:none}
+.tog i{display:block;width:18px;height:18px;border-radius:50%;background:var(--mut);transition:transform .15s}
+.tog.on i{transform:translateX(22px);background:var(--acc)}
+.tog:disabled{opacity:.5}
 .sw{width:18px;height:18px;accent-color:var(--acc)}
 .chk{display:flex;align-items:center;gap:10px;min-height:28px}
 .warn{padding:12px 16px;border-radius:10px;background:#2a2114;color:var(--warn);line-height:1.5}
@@ -103,6 +107,7 @@ const MENU = [
   ["backup", "Backup", "Save every partition on the board to this computer. Do this first."],
   ["build", "Build image", "Downloads a release's assembly bundle from GitHub and assembles the firmware image from it and your backup."],
   ["flash", "Flash OpenWrt", "Rehearse, then write an image to slot A. Every guard and typed confirmation stays."],
+  ["boot", "Boot order", "Choose which slot the modem boots: A (OpenWrt) or B (vendor firmware). Over SSH on the running modem."],
   ["read", "Read & verify", "Read one partition from the board and compare it with your backup. Writes nothing."],
   ["test", "Self-test", "Check setup, the patched library and a real read. Writes nothing."],
   ["uart", "UART monitor", "Capture the serial console to a log. A flash needs it unless you have no adapter."],
@@ -364,6 +369,32 @@ function viewRead() {
   </div>
   ${S.job && S.job.kind === "read" ? consoleHtml() : ""}`;
 }
+function viewBoot() {
+  const b = S.boot || (S.boot = { loading: false });
+  if (!b.info && !b.error && !b.loading) {
+    b.loading = true;
+    api("/api/boot").then((r) => { b.info = r; }, (e) => { b.error = e.message; }).finally(() => { b.loading = false; if (S.screen === "boot") drawView(); });
+  }
+  const on = b.info && b.info.boot === "b", ready = b.info && !b.working;
+  return `${head("Boot order", "Which slot the modem boots at its next power-up: A is the OpenWrt image, B is the vendor firmware. Needs the modem running and reachable over SSH; the USB connection is not used.")}
+  <div class="box" style="padding:18px;display:grid;gap:16px;max-width:760px">
+    ${b.error ? `<div class="warn">${esc(b.error)}</div>` : b.info ? "" : `<div class="mut">Asking the modem…</div>`}
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+      <span style="font-weight:${on ? 400 : 700}">Slot A · OpenWrt</span>
+      <button class="tog${on ? " on" : ""}" role="switch" aria-checked="${on}" data-act="boot-toggle" ${ready ? "" : "disabled"}><i></i></button>
+      <span style="font-weight:${on ? 700 : 400}">Slot B · vendor firmware</span>
+      <button class="btn" data-act="boot-reload" ${b.working ? "disabled" : ""} style="margin-left:auto">Read again</button>
+    </div>
+    ${b.info ? `<div class="mut">Boots next: <b>slot ${b.info.boot.toUpperCase()}</b>. Running now: slot ${esc((b.info.running || "?").toUpperCase())}. A change applies at the next power-up; nothing reboots the modem for you.</div>` : ""}
+    ${b.working ? `<div class="mut">Writing the boot record, one copy at a time…</div>` : ""}
+    ${b.done ? `<div class="note">${esc(b.done)}</div>` : ""}
+  </div>
+  <dialog id="risk" style="max-width:560px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:inherit;padding:24px">
+    <h3 style="margin:0 0 12px">Change the boot order</h3>
+    <div style="display:grid;gap:8px;line-height:1.5"><div>• Two priority bytes change in each of the four copies of the boot record; a copy of the whole partition is saved on this computer first.</div><div>• Keep the modem powered until this finishes. A power loss during a write can damage the boot record; the way back is a USB restore from your backup.</div></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px"><button class="btn" data-act="risk-cancel" style="height:44px;padding:0 22px">Cancel</button><button class="primary" data-act="boot-go">I accept the risk, change it</button></div>
+  </dialog>`;
+}
 function viewBuild() {
   const pick = S.releases ? Math.max(0, S.releases.findIndex((r) => !r.beta)) : 0;  // the newest stable release, else the newest
   if (!S.releases && !S.relError) api("/api/releases", {}).then((r) => { S.releases = r.releases; if (S.screen === "build") drawView(); }, (e) => { S.relError = "Could not load the release list: " + e.message; if (S.screen === "build") drawView(); });
@@ -454,7 +485,7 @@ function viewWizard() { return S.pw ? powerWizard() : `${head("Connect device", 
 function drawView() {
   const v = { home: viewHome, wizard: viewWizard, backup: viewBackup, uart: viewUart,
     flash: () => viewWrite("flash"), access: () => viewWrite("access"), rescue: () => viewWrite("rescue"),
-    build: viewBuild,
+    build: viewBuild, boot: viewBoot,
     read: viewRead,
     test: () => wizardRunner("Self-test", "Serial ports, backup, download agent and the patched library. Optionally reads lk_b and compares it. Read-only.", "test", "Run self-test") }[S.screen];
   const away = busy() && S.screen !== jobScreen(S.job.kind);
@@ -510,6 +541,16 @@ document.addEventListener("click", async (e) => {
     return;
   }
   if (a === "disconnect") { try { await api("/api/session", {}); } catch (er) { alert(er.message); } await refresh(); return drawView(); }
+  if (a === "boot-reload") { S.boot = null; return drawView(); }
+  if (a === "boot-toggle") return $("#risk").showModal();
+  if (a === "boot-go") {
+    $("#risk").close();
+    const b = S.boot, want = b.info.boot === "a" ? "b" : "a";
+    b.working = true; b.done = null; drawView();
+    try { b.info = await api("/api/boot", { slot: want }); b.error = null; b.done = `Slot ${want.toUpperCase()} will boot at the next power-up.`; }
+    catch (er) { b.error = er.message; }
+    b.working = false; return drawView();
+  }
   if (a === "pw-next") return pwNext();
   if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
   if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader")?.value, twice: $("#bk-twice").checked });

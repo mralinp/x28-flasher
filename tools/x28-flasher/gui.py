@@ -494,6 +494,12 @@ def make_handler(app):
                 return self.reply(200, (ASSETS / "index.html").read_bytes(), "text/html; charset=utf-8")
             if url.path == "/api/state":
                 return self.reply(200, app.state())
+            if url.path == "/api/boot":
+                import boot_ssh
+                try:
+                    return self.reply(200, boot_ssh.state())
+                except boot_ssh.BootError as err:
+                    return self.reply(409, {"error": str(err)})
             if url.path == "/api/uart/tail":
                 return self.reply(200, {"text": app.uart_tail(), "status": app.uart_status()})
             parts = url.path.strip("/").split("/")
@@ -557,6 +563,12 @@ def make_handler(app):
                         raise ValueError("that file does not exist")
                     app.config().set("loader", str(data["path"]))
                     return self.reply(200, {"ok": True})
+                if path == ["api", "boot"]:  # over SSH on the running modem: no USB session needed
+                    import boot_ssh
+                    try:
+                        return self.reply(200, boot_ssh.set_slot(str(data.get("slot"))))
+                    except boot_ssh.BootError as err:
+                        raise RuntimeError(str(err))
                 if path == ["api", "releases"]:
                     import images
                     return self.reply(200, {"releases": images.releases()})
