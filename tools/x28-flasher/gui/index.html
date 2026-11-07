@@ -352,16 +352,15 @@ function wizardRunner(title, sub, action, label, extra = "") {
 function viewRead() {
   if (S.pw && S.pw.kind === "read") return powerWizard();
   const st = S.st, b = st.build, table = (st.info && st.info.table) || [];
-  const pick = table.length ? `<select id="rd-part">${table.map((r) => `<option value="${esc(r.name)}">${esc(r.name)}  ·  ${fmt(parseInt(r.size, 16))}</option>`).join("")}</select>`
-    : `<input type="text" id="rd-part" placeholder="Partition name, for example misc"><span class="mut" style="font-size:12.5px">Connect the device first to pick from the partitions on the board.</span>`;
   return `${head("Read & verify", "Reads one partition from the modem, keeps a copy, and can compare it with your backup. Writes nothing.")}
   <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
-    <label class="f"><span class="lbl">Partition</span>${pick}</label>
+    ${table.length ? `<div><span class="lbl">Partition</span><div class="box scroll" style="margin-top:6px;max-height:300px"><table><thead><tr><th></th><th>Name</th><th>Offset</th><th>Size</th></tr></thead><tbody>${table.map((r, k) => `<tr data-pick="rd-part-${k}" style="cursor:pointer"><td><input type="radio" name="rd-part" id="rd-part-${k}" value="${esc(r.name)}" ${r.name === (S.readPart || table[0].name) ? "checked" : ""}></td><td class="mono">${esc(r.name)}</td><td class="mono mut">${esc(r.start)}</td><td>${fmt(parseInt(r.size, 16))}</td></tr>`).join("")}</tbody></table></div></div>`
+      : `<div class="warn">The partitions on the board are listed after the device is read. Connect the device first.</div><div><button class="primary" data-act="connect" ${busy() ? "disabled" : ""}>Connect device</button></div>`}
     <label class="chk"><input class="sw" type="checkbox" id="rd-compare" ${b.backups.length ? "checked" : "disabled"}><span>Compare with my backup${b.backups.length ? "" : " (no finished backup found)"}</span></label>
     ${b.backups.length ? `<label class="f"><span class="lbl">Backup to compare with</span><select id="rd-backup">${optionList(b.backups, (v) => v)}</select></label>` : ""}
     <label class="f"><span class="lbl">Keep a copy in</span><span style="display:flex;gap:8px"><input type="text" id="rd-save" value="${esc(b.reads_dir)}"><button type="button" class="btn" data-act="browse" data-target="rd-save" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
     ${st.session && st.session.state === "connected" ? `<div class="mut">✓ Connected: no power cycle needed.</div>` : ""}
-    <div><button class="primary" data-act="read-go" ${busy() ? "disabled" : ""}>Read partition</button></div>
+    ${table.length ? `<div><button class="primary" data-act="read-go" ${busy() ? "disabled" : ""}>Read partition</button></div>` : ""}
   </div>
   ${S.job && S.job.kind === "read" ? consoleHtml() : ""}`;
 }
@@ -466,6 +465,10 @@ function drawView() {
 }
 
 /* ---------- events ---------- */
+document.addEventListener("click", (e) => {
+  const row = e.target.closest("[data-pick]");
+  if (row && e.target.tagName !== "INPUT") { const r = document.getElementById(row.dataset.pick); if (r) { r.checked = true; S.readPart = r.value; } }
+});
 document.addEventListener("click", async (e) => {
   const t = e.target.closest("[data-go],[data-act],[data-send]");
   if (!t) return;
@@ -520,7 +523,7 @@ document.addEventListener("click", async (e) => {
     S.job = null; if (await start("build", params)) drawView(); return;
   }
   if (a === "read-go") {
-    const part = $("#rd-part").value.trim();
+    const part = document.querySelector('input[name="rd-part"]:checked')?.value;
     if (!part) return alert("Choose a partition.");
     return openPower("read", { partition: part, compare: $("#rd-compare").checked, backup: $("#rd-backup")?.value, save: $("#rd-save").value });
   }
@@ -546,6 +549,9 @@ document.addEventListener("click", async (e) => {
     try { await api("/api/uart", { on, port: $("#u-port").value, baud: Number($("#u-baud").value) }); } catch (er) { alert(er.message); }
     await refresh(); drawView();
   }
+});
+document.addEventListener("change", (e) => {
+  if (e.target.name === "rd-part") S.readPart = e.target.value;  // the Read list survives a redraw
 });
 document.addEventListener("change", (e) => {  // the rehearsal switch: off means the real write, which builds on a verified rehearsal
   if (e.target.id === "fl-rehearse" && $("#fl-prior-row")) $("#fl-prior-row").style.display = e.target.checked ? "none" : "";
