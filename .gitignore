@@ -8,3 +8,9 @@ dist/
 *.img
 overlay/
 build-x28-flasher/
+*.app/
+*.dmg
+*.deb
+*.exe
+*.zip
+*.tar.gz

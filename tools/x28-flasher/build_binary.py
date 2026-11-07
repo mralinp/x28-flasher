@@ -58,7 +58,7 @@ def main():
     if subprocess.check_output(["git", "-C", home / "src", "status", "--porcelain", "--ignored"], text=True).strip():
         sys.exit("BUILD_HOME/src is not a clean checkout of the pinned commit")  # the identity check only covers xml_lib.py
     run(sys.executable, "-m", "pip", "install", "-q", "--no-deps", home / "src")
-    pkg = next((home / "venv").glob("lib/python3*/site-packages/mtkclient"))
+    pkg = next((home / "venv").glob("**/site-packages/mtkclient"))
     for rel, old, new, required in PATCHES:
         path = pkg / rel
         text = path.read_text()

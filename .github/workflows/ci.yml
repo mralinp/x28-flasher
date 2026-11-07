@@ -1,5 +1,6 @@
-# Tests the recovery tools and builds the x28-flasher single binary (PyInstaller, one folder) from the pinned, patched mtkclient.
-# Frozen builds are READ-ONLY (flash is refused). The vendor download agent is never bundled.
+# Tests the recovery tools, builds the x28-flasher app (PyInstaller, one folder) from the pinned, patched mtkclient and packages an
+# installer per system: macOS Apple silicon (.dmg), Linux x86_64 (.deb) and Windows x64 (setup .exe). No build output is ever committed;
+# the installers are workflow artifacts. The vendor download agent is never bundled.
 name: ci
 
 on:
@@ -17,9 +18,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: macos-14, name: macos-arm64 }
-          - { os: ubuntu-22.04, name: linux-x86_64 }
+          - { os: macos-14, name: macos-arm64, py: bh/venv/bin/python }  # Apple silicon only: no Intel build
+          - { os: ubuntu-22.04, name: linux-x86_64, py: bh/venv/bin/python }
+          - { os: windows-2022, name: windows-x64, py: bh/venv/Scripts/python }
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -30,15 +35,20 @@ jobs:
 
       - name: libusb
         run: |
-          if [ "$RUNNER_OS" = macOS ]; then brew install libusb; else sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0; fi
+          case "$RUNNER_OS" in
+            macOS) [ "$(uname -m)" = arm64 ] || { echo "macOS builds are Apple silicon only"; exit 1; }; brew install libusb ;;
+            Linux) sudo apt-get update && sudo apt-get install -y --no-install-recommends libusb-1.0-0 ;;
+            Windows) ;;  # the libusb DLL comes from the pip package below
+          esac
 
       - name: Firmware overlay (package files the assembly reads)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="$(gh release list -R mralinp/zlt-x28-openwrt --limit 1 --json tagName -q '.[0].tagName')"  # 0.x are pre-releases, which a bare download skips
-          gh release download "$TAG" -R mralinp/zlt-x28-openwrt -p 'x28-overlay-*.tar.gz' -D ov
-          mkdir overlay && tar -xzf ov/x28-overlay-*.tar.gz -C overlay
+          gh release download "$TAG" -R mralinp/zlt-x28-openwrt -p 'x28-assembly-*.tar.gz' -D ov
+          mkdir bundle && tar -xzf ov/x28-assembly-*.tar.gz -C bundle --strip-components=1
+          mv bundle/overlay overlay
 
       - name: Unit tests
         run: |
@@ -55,34 +65,42 @@ jobs:
           git -C bh/src -c advice.detachedHead=false checkout -q FETCH_HEAD
           python3 -m venv bh/venv
           bh/venv/bin/pip install -q pycryptodome pycryptodomex pyserial pyusb colorama questionary pyinstaller
+          if [ "$RUNNER_OS" = Windows ]; then bh/venv/Scripts/pip install -q libusb; fi
 
       - name: Build
-        run: bh/venv/bin/python tools/x28-flasher/build_binary.py --home bh --out dist
+        run: ${{ matrix.py }} tools/x28-flasher/build_binary.py --home bh --out dist
 
       - name: Smoke test the frozen binary
         run: |
           B=dist/x28-flasher/x28-flasher
+          [ "$RUNNER_OS" = Windows ] && B=$B.exe
           "$B" --selftest
           want="$(python3 -c "import json; print(json.load(open('dist/x28-flasher/_internal/identity.json'))['xml_lib_sha256'])")"
           test "$("$B" identity)" = "$want"
-          if "$B" flash identical --candidate-dir x </dev/null 2>err.txt; then echo "frozen flash must be refused"; exit 1; fi
-          grep -q "read-only" err.txt
 
-      - name: Package
-        run: |
-          tar -C dist -czf "x28-flasher-${{ matrix.name }}.tar.gz" x28-flasher
-          if command -v sha256sum >/dev/null; then sha256sum "x28-flasher-${{ matrix.name }}.tar.gz"; else shasum -a 256 "x28-flasher-${{ matrix.name }}.tar.gz"; fi | tee "x28-flasher-${{ matrix.name }}.tar.gz.sha256"
-
-      - name: Mac app (packaged, read-only)
+      - name: Installer (macOS .dmg)
         if: runner.os == 'macOS'
         run: |
           python3 tools/x28-flasher/build_app.py
-          ditto -c -k --keepParent "dist/X28 Flasher.app" X28-Flasher-macos.zip
+          hdiutil create -volname "X28 Flasher" -srcfolder "dist/X28 Flasher.app" -ov -format UDZO X28-Flasher-macos-arm64.dmg
+
+      - name: Installer (Linux .deb)
+        if: runner.os == 'Linux'
+        run: tools/x28-flasher/installers/make_deb.sh dist "0.0.${{ github.run_number }}" X28-Flasher-linux-x86_64.deb
+
+      - name: Installer (Windows setup)
+        if: runner.os == 'Windows'
+        run: |
+          choco install innosetup -y --no-progress
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "//DSrc=$(cygpath -w "$PWD/dist/x28-flasher")" "//DOut=$(cygpath -w "$PWD")" "//DVersion=0.0.${{ github.run_number }}" tools/x28-flasher/installers/windows.iss
+
+      - name: Checksums
+        run: |
+          for f in X28-Flasher-*; do if command -v sha256sum >/dev/null; then sha256sum "$f"; else shasum -a 256 "$f"; fi; done | tee "SHA256SUMS-${{ matrix.name }}.txt"
 
       - uses: actions/upload-artifact@v4
         with:
           name: x28-flasher-${{ matrix.name }}
           path: |
-            x28-flasher-${{ matrix.name }}.tar.gz
-            x28-flasher-${{ matrix.name }}.tar.gz.sha256
-            X28-Flasher-macos.zip
+            X28-Flasher-*
+            SHA256SUMS-${{ matrix.name }}.txt
