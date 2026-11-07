@@ -116,6 +116,12 @@ for t in tools/build/test_*.py tools/recovery/test_*.py tools/x28-flasher/test_*
 
 CI runs them on macOS arm64 and Linux x86_64, then builds the read-only binary.
 
+## Support
+
+Made with ❤️ by mralinp. If this project helps you, please give it a star on GitHub, and donations are welcome on any EVM chain: `0x6743d8fe71f18b3101f3086e8d9f8d272d0f7618`
+
+<img src="docs/support-qr.svg" alt="QR code of the support address" width="160">
+
 ## License
 
 GPL-2.0-only, see [LICENSE](LICENSE).
