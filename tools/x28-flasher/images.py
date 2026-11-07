@@ -32,12 +32,12 @@ def latest_release(fetch=get, repo=REPO):
 
 
 def releases(fetch=get, repo=REPO):
-    """Releases that carry the userspace tarball, newest first: [{tag, date}]."""
+    """Releases that carry the userspace tarball, newest first: [{tag, date, beta}] (beta: GitHub marks it a pre-release)."""
     out = []
     for rel in json.loads(fetch(f"https://api.github.com/repos/{repo}/releases?per_page=30")):
         names = [a["name"] for a in rel.get("assets", [])]
         if any(n.startswith("x28-userspace-") and n.endswith("-rootfs.tar.gz") for n in names):
-            out.append({"tag": rel["tag_name"], "date": (rel.get("published_at") or "")[:10]})
+            out.append({"tag": rel["tag_name"], "date": (rel.get("published_at") or "")[:10], "beta": bool(rel.get("prerelease"))})
     return out
 
 

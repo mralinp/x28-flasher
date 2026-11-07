@@ -149,11 +149,11 @@ if __name__ == "__main__":
 
 class ReleaseListTests(unittest.TestCase):
     def test_lists_only_releases_with_the_userspace_tarball(self):
-        rels = [{"tag_name": "v2", "published_at": "2026-11-06T01:00:00Z", "assets": [{"name": "x28-userspace-v2-x-rootfs.tar.gz"}]},
+        rels = [{"tag_name": "v2", "published_at": "2026-11-06T01:00:00Z", "prerelease": True, "assets": [{"name": "x28-userspace-v2-x-rootfs.tar.gz"}]},
                 {"tag_name": "feed-2", "assets": [{"name": "ipset.ipk"}]},
                 {"tag_name": "v1", "published_at": "2026-11-05T01:00:00Z", "assets": [{"name": "x28-userspace-v1-x-rootfs.tar.gz"}]}]
         got = images.releases(fetch=lambda url: json.dumps(rels).encode())
-        self.assertEqual(got, [{"tag": "v2", "date": "2026-11-06"}, {"tag": "v1", "date": "2026-11-05"}])
+        self.assertEqual(got, [{"tag": "v2", "date": "2026-11-06", "beta": True}, {"tag": "v1", "date": "2026-11-05", "beta": False}])
 
 
 class FrozenBuildTests(unittest.TestCase):

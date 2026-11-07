@@ -228,7 +228,7 @@ def build(fl, ui, cfg):
         if not given:
             tags = images.releases()
             given = {"backup": ask_path(ui, cfg, "backup", "Folder with your verified backup", DEFAULT_BACKUP, True),
-                     "tag": ui.select("Which release should the image be built from?", [(f"{r['tag']}  {r['date']}", r["tag"]) for r in tags])}
+                     "tag": ui.select("Which release should the image be built from?", [(f"{r['tag']}  {'beta' if r['beta'] else 'stable'}  {r['date']}", r["tag"]) for r in tags])}
         return build_local(fl, ui, cfg, PRIVATE / "build", given)
     except (RuntimeError, ValueError, OSError) as err:
         print("  " + bad(str(err)))
