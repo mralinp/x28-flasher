@@ -46,6 +46,7 @@ def main():
     ap.add_argument("--home", type=Path, required=True)
     ap.add_argument("--out", type=Path, default=Path("dist"))
     ap.add_argument("--loader", type=Path, help="your DA_BR.bin: put it inside this build only (it is Quectel's, never committed or built by CI; do not share the result)")
+    ap.add_argument("--version", default="dev", help="the app's version, shown in the page (CI passes the release it is about to tag)")
     args = ap.parse_args()
     home = args.home.resolve()
     os.environ["X28_MTKCLIENT"] = str(home)  # before common is imported
@@ -78,7 +79,7 @@ def main():
     work.mkdir(parents=True, exist_ok=True)
     from importlib.metadata import version
     tools = {n: version(n) for n in ("pyinstaller", "pyusb", "pycryptodome", "pycryptodomex", "pyserial", "colorama", "questionary", "prompt_toolkit")}
-    (work / "identity.json").write_text(json.dumps({"commit": MTKCLIENT_COMMIT, "xml_lib_sha256": hashlib.sha256(xml.encode()).hexdigest(),
+    (work / "identity.json").write_text(json.dumps({"version": args.version, "commit": MTKCLIENT_COMMIT, "xml_lib_sha256": hashlib.sha256(xml.encode()).hexdigest(),
                                                     "python": sys.version.split()[0], "build_tools": tools}, indent=1))
     data = [(work / "identity.json", "."), (pkg.parent / XML, str(Path(XML).parent))]
     data += [(f, "recovery") for f in (TOOLS / "recovery").glob("*.py") if not f.name.startswith("test_")]

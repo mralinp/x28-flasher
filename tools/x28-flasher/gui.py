@@ -446,11 +446,19 @@ class App:
         in_venv = fl.FROZEN or os.path.realpath(sys.prefix) == os.path.realpath(MTK_HOME / "venv")
         setup = {"mtkclient": fl.FROZEN or fl.VENV_PY.exists(), "restart": not in_venv and fl.VENV_PY.exists(), "libusb": fl.FROZEN or have_libusb(),
                  "python": bool(fl.FROZEN or find_python()), "brew": bool(find_brew()), "mac": sys.platform == "darwin"}
-        return {"frozen": fl.FROZEN, "setup": setup, "ports": ports, "loader": {"path": loader, "ok": Path(loader).is_file()},
+        return {"version": app_version(), "frozen": fl.FROZEN, "setup": setup, "ports": ports, "loader": {"path": loader, "ok": Path(loader).is_file()},
                 "backup_out": str(fl.default_backup_dir()), "backup_dir": self.config().get("backup") or str(DEFAULT_BACKUP),
                 "images": images, "info": self.info, "build": self.build_inputs(), "uart": self.uart_status(),
                 "session": {"state": "connected" if self.session.connected else "connecting"} if self.session and self.session.code is None else None,
                 "job": {"id": job.id, "kind": job.kind, "running": job.code is None} if job else None}
+
+
+def app_version():
+    """Baked into identity.json by build_binary.py (CI passes the release number); 'dev' when run from a checkout."""
+    try:
+        return json.loads((Path(sys._MEIPASS) / "identity.json").read_text())["version"] if FROZEN else "dev"
+    except (OSError, KeyError, ValueError):
+        return "dev"
 
 
 def make_handler(app):

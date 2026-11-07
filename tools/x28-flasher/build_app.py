@@ -8,6 +8,7 @@ next to it (mtkclient, libusb and the page are inside that) and shows its page. 
 swiftc (Xcode or the command line tools) the app falls back to the frozen binary, which opens the page in your browser.
 """
 import argparse
+import json
 import plistlib
 import shutil
 import subprocess
@@ -36,10 +37,12 @@ def main():
                         "-framework", "Cocoa", "-framework", "WebKit"], check=True)
     else:
         print("swiftc not found: the app will open the page in your browser instead of its own window")
+    version = json.loads((src / "_internal/identity.json").read_text()).get("version", "dev")
+    version = version if version[:1].isdigit() else "0.0.0"  # the plist wants a number; a dev build is 0.0.0
     (app / "Contents/Info.plist").write_bytes(plistlib.dumps({
         "CFBundleName": "X28 Flasher", "CFBundleDisplayName": "X28 Flasher", "CFBundleIdentifier": "com.mralinp.x28-flasher",
         "CFBundleExecutable": "X28 Flasher" if native else "x28-flasher", "CFBundleIconFile": "AppIcon",
-        "CFBundlePackageType": "APPL", "CFBundleVersion": "1", "NSHighResolutionCapable": True,
+        "CFBundlePackageType": "APPL", "CFBundleVersion": version, "CFBundleShortVersionString": version, "NSHighResolutionCapable": True,
         "NSAppTransportSecurity": {"NSAllowsLocalNetworking": True},  # the window loads http://127.0.0.1
         **({} if native else {"LSUIElement": True}),  # the browser fallback has no window of its own; its page has Quit
     }))
