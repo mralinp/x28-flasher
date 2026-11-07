@@ -27,7 +27,7 @@ from inventory import elf_dynamic
 ROOT = Path(os.environ.get('X28_OVERLAY') or Path(__file__).resolve().parents[2]/'overlay')
 
 # S80ucitrack: LuCI's apply restarts non-procd services such as Passwall2 only through its triggers (#198).
-ALLOWED_START = {'S00urngd','S80ucitrack','S10boot','S10system','S11sysctl','S12log','S18x28-switch','S12rpcd','S19firewall','S19x28-modem','S19dropbear','S19dnsmasq','S20network','S35odhcpd','S50uhttpd','S95done','S96x28-bootok','S97x28-wps','S99x28-leds'}
+ALLOWED_START = {'S00urngd','S80ucitrack','S10boot','S10system','S11sysctl','S12log','S18x28-switch','S12rpcd','S19firewall','S19x28-modem','S19dropbear','S19dnsmasq','S20network','S35odhcpd','S50uhttpd','S95done','S96x28-bootok','S96x28-dhcp','S97x28-wps','S99x28-leds'}
 ALLOWED_STOP = {'K50dropbear','K89log','K90boot','K90network','K90umount'}
 
 LAN = 'br-lan'
@@ -38,6 +38,7 @@ WIFI = ROOT/'package/x28-wifi/files'
 MIPC = ROOT/'package/x28-mipc/files'
 LUCI_MIPC = ROOT/'package/luci-proto-x28-mipc'
 BOOTOK = ROOT/'package/x28-bootok/files'
+DHCP = ROOT/'package/x28-dhcp/files'  # releases before x28-dhcp do not carry it
 STORAGE = ROOT/'package/x28-storage/files'
 # ubi-utils for attaching user_data (#183); its writers have no business on a router that must not touch other slots.
 UBI_WRITERS = tuple('usr/sbin/'+n for n in ('ubidetach','ubiformat','ubimkvol','ubirmvol','ubirsvol','ubiupdatevol','ubirename','ubiblock','ubinize','mtdinfo','ubicrc32'))
@@ -358,6 +359,9 @@ config timeserver 'ntp'
             if n!=1:raise ValueError('unexpected uhttpd config: '+old)
         put('etc/config/uhttpd',config)
     put('etc/init.d/x28-bootok',(BOOTOK/'x28-bootok.init').read_text(),0o755);enable(96,'x28-bootok')
+    if DHCP.is_dir():  # dnsmasq can start without a DHCP range; this restarts it once the LAN has its address (zlt-x28-openwrt#370)
+        put('etc/init.d/x28-dhcp',(DHCP/'x28-dhcp.init').read_text(),0o755);enable(96,'x28-dhcp')
+        put('usr/libexec/x28-dhcp-guard',(DHCP/'x28-dhcp-guard').read_text(),0o755)
     put('lib/preinit/79_x28_user_data',(STORAGE/'x28-user-data.preinit').read_text())
     put('etc/config/fstab',(STORAGE/'fstab').read_text())
     for name in UBI_WRITERS:
