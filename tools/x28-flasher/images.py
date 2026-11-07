@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import re
+import shutil
 import tarfile
 import time
 import urllib.request
@@ -42,11 +43,11 @@ def supported(tag):
 
 
 def releases(fetch=get, repo=REPO):
-    """Releases that carry the userspace tarball, newest first: [{tag, date, beta}] (beta: GitHub marks it a pre-release)."""
+    """Releases that carry an assembly bundle, newest first: [{tag, date, beta}] (beta: GitHub marks it a pre-release)."""
     out = []
     for rel in json.loads(fetch(f"https://api.github.com/repos/{repo}/releases?per_page=30")):
         names = [a["name"] for a in rel.get("assets", [])]
-        if supported(rel["tag_name"]) and any(n.startswith("x28-userspace-") and n.endswith("-rootfs.tar.gz") for n in names):
+        if supported(rel["tag_name"]) and any(n.startswith("x28-assembly-") and n.endswith(".tar.gz") for n in names):
             out.append({"tag": rel["tag_name"], "date": (rel.get("published_at") or "")[:10], "beta": bool(rel.get("prerelease"))})
     return out
 
@@ -76,13 +77,7 @@ def download(dest_root, fetch=get, repo=REPO):
     return out
 
 
-# Pinned: the same files the local builds have used. downloads.openwrt.org keeps a release's packages in place.
-OPENWRT = "https://downloads.openwrt.org/releases/23.05.5/"
-EXTRA_IPKS = {
-    "alsa-lib_1.2.9-1_aarch64_cortex-a53.ipk": (OPENWRT + "packages/aarch64_cortex-a53/packages/", "4cca89805578f18778b5da41221256c2f87ea33cd1dfd083d151ed936cd9db37"),
-    "libstdcpp6_12.3.0-4_aarch64_generic.ipk": (OPENWRT + "targets/armsr/armv8/packages/", "3f174e78dead3941736971da0bd99a2b4dd0b3411bbd6ea4870ae677c49dfef4"),
-}
-FEED_PREFIXES = ("ipset_", "libipset13_", "x28-ipset-kernel_")
+FEED_PREFIXES = ("ipset_", "libipset13_", "x28-ipset-kernel_")  # first_boot's --ipk; the bundle's other ipks go to stage_native
 
 
 def fetch_checked(url, want, dest, fetch=get):
@@ -98,47 +93,60 @@ def fetch_checked(url, want, dest, fetch=get):
 
 
 def release_assets(tag, fetch=get, repo=REPO):
-    """name -> (url, sha256) from GitHub's own digest for every asset of a release; 'latest' means the newest one with a userspace tarball."""
-    api = f"https://api.github.com/repos/{repo}/releases"
-    rels = json.loads(fetch(api if tag == "latest" else f"{api}/tags/{tag}"))
-    for rel in (rels if tag == "latest" else [rels]):
-        found = {a["name"]: (a["browser_download_url"], a.get("digest", "").removeprefix("sha256:")) for a in rel.get("assets", [])}
-        if tag != "latest" or any(n.startswith("x28-userspace-") and n.endswith("-rootfs.tar.gz") for n in found):
-            return found
-    raise RuntimeError("no release carries the userspace tarball")
+    """name -> (url, sha256) from GitHub's own digest for every asset of a release."""
+    rel = json.loads(fetch(f"https://api.github.com/repos/{repo}/releases/tags/{tag}"))
+    return {a["name"]: (a["browser_download_url"], a.get("digest", "").removeprefix("sha256:")) for a in rel.get("assets", [])}
 
 
-def extract_overlay(archive, dest):
-    """The firmware's package files (first_boot reads them via X28_OVERLAY); only plain files and directories under package/ are accepted."""
+def extract_bundle(archive, dest):
+    """Unpack an x28-assembly tarball (one top folder) to dest. Only plain files and directories inside that folder are accepted, and every
+    file its own SHA256SUMS lists must match; on any problem nothing is kept."""
     if dest.is_dir():
         return dest
+    tmp = dest.with_name(dest.name + ".part")
+    shutil.rmtree(tmp, ignore_errors=True)
     with tarfile.open(archive) as tar:
         members = tar.getmembers()
+        tops = {Path(m.name).parts[0] for m in members if Path(m.name).parts}
         for m in members:
             parts = Path(m.name).parts
-            if not (m.isfile() or m.isdir()) or Path(m.name).is_absolute() or ".." in parts or parts[0] != "package":
-                raise ValueError(f"unexpected overlay entry: {m.name}")
-        tmp = dest.with_name(dest.name + ".part")
+            if not (m.isfile() or m.isdir()) or Path(m.name).is_absolute() or ".." in parts:
+                raise ValueError(f"unexpected bundle entry: {m.name}")
+        if len(tops) != 1:
+            raise ValueError("the bundle must have exactly one top folder")
         tar.extractall(tmp, members)
-    tmp.rename(dest)
+    root = tmp / tops.pop()
+    try:
+        sums = (root / "SHA256SUMS").read_text().splitlines()
+        if not sums:
+            raise ValueError("the bundle has no checksums")
+        for line in sums:
+            want, _, rel = line.partition("  ")
+            target = (root / rel).resolve()
+            if root.resolve() not in target.parents or not target.is_file() or sha256(target.read_bytes()) != want:
+                raise ValueError(f"bundle file {rel} does not match its checksum")
+    except (OSError, ValueError):
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    root.rename(dest)
+    shutil.rmtree(tmp, ignore_errors=True)
     return dest
 
 
-def fetch_inputs(dest, tag="latest", fetch=get):
-    """The public build inputs, cached in dest: userspace tarball, the firmware overlay (package files), the two OpenWrt ipks and the X28 feed's ipset packages."""
-    out = {"extra_ipks": [], "feed": []}
-    for name, (url, want) in release_assets(tag, fetch).items():
-        if name.startswith("x28-userspace-") and name.endswith("-rootfs.tar.gz"):
-            out["modern"] = str(fetch_checked(url, want, dest / name, fetch))
-        if name.startswith("x28-overlay-") and name.endswith(".tar.gz"):
-            out["overlay"] = str(extract_overlay(fetch_checked(url, want, dest / name, fetch), dest / name.removesuffix(".tar.gz")))
-    for name, (url, want) in release_assets("feed-2", fetch).items():
-        if name.startswith(FEED_PREFIXES):
-            out["feed"].append(str(fetch_checked(url, want, dest / name, fetch)))
-    for name, (base, want) in EXTRA_IPKS.items():
-        out["extra_ipks"].append(str(fetch_checked(base + name, want, dest / name, fetch)))
-    if "overlay" not in out or "modern" not in out or len(out["feed"]) != len(FEED_PREFIXES):
-        raise RuntimeError("the release or feed-2 is missing an expected file")
+def fetch_inputs(dest, tag, fetch=get):
+    """The build inputs from one release's assembly bundle, cached in dest: the userspace rootfs, the package files (overlay), the kernel modules
+    and the extra packages, split into the X28 feed's (first_boot) and the rest (stage_native)."""
+    found = [(n, v) for n, v in release_assets(tag, fetch).items() if n.startswith("x28-assembly-") and n.endswith(".tar.gz")]
+    if not found:
+        raise RuntimeError(f"release {tag} has no assembly bundle")
+    name, (url, want) = found[0]
+    root = extract_bundle(fetch_checked(url, want, dest / name, fetch), dest / name.removesuffix(".tar.gz"))
+    rootfs = sorted(root.glob("openwrt-*-rootfs.tar.gz"))
+    ipks = sorted(str(p) for p in root.glob("ipk/*.ipk"))
+    out = {"modern": str(rootfs[0]) if rootfs else "", "overlay": str(root / "overlay"), "kmods": str(root / "kmods"),
+           "feed": [p for p in ipks if Path(p).name.startswith(FEED_PREFIXES)], "extra_ipks": [p for p in ipks if not Path(p).name.startswith(FEED_PREFIXES)]}
+    if not rootfs or not (root / "overlay").is_dir() or not any((root / "kmods").glob("*.ko")) or len(out["feed"]) != len(FEED_PREFIXES):
+        raise RuntimeError(f"the bundle of {tag} is missing an expected file")
     return out
 
 
@@ -160,14 +168,14 @@ def stock_access_command(rootfs_b, key, out_dir, repo):
 
 
 def local_commands(inputs, work, out, repo, python="python3"):  # python: a command, or a list when frozen (the binary's own --run-script)
-    """The three build steps, in order. inputs: stock, modern (files), optional key, extra_ipks, feed (stage extras, feed ipks)."""
+    """The three build steps, in order. inputs: stock, modern (files), optional key, extra_ipks, kmods (folder), feed (stage extras, kmods, feed ipks)."""
     stage, profile = work / "stage", work / "profile"
     python = python if isinstance(python, list) else [python]
     return [
         [*python, str(repo / "tools/build/stage_native.py"), "--stock", inputs["stock"], "--modern", inputs["modern"],
          "--ipk", *inputs["extra_ipks"], "--output", str(stage)],
         [*python, str(repo / "tools/build/first_boot.py"), "--stage", str(stage), "--stock", inputs["stock"], "--output", str(profile),
-         *(["--public-key", inputs["key"]] if inputs.get("key") else []),
+         *(["--public-key", inputs["key"]] if inputs.get("key") else []), "--kmods", inputs["kmods"],
          "--ipk", *inputs["feed"]],
         ["docker", "build", "-t", "x28-firmware-tools:ubi", "-f", str(repo / "tools/firmware/Dockerfile"), str(repo / "tools/firmware")],
         ["docker", "run", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges",

@@ -70,7 +70,7 @@ class StockAccessTests(unittest.TestCase):
 
 class LocalTests(unittest.TestCase):
     def test_commands_run_in_pipeline_order_and_chain_outputs(self):
-        inputs = {"stock": "s.tgz", "modern": "m.tgz", "extra_ipks": ["a.ipk"], "feed": ["f.ipk"]}
+        inputs = {"stock": "s.tgz", "modern": "m.tgz", "extra_ipks": ["a.ipk"], "kmods": "km", "feed": ["f.ipk"]}
         work, out = Path("/w"), Path("/b/native-ubi-local-1")
         cmds = images.local_commands(inputs, work, out, Path("/r"))
         self.assertEqual([c[1].split("/")[-1] if c[0] == "python3" else c[1] for c in cmds], ["stage_native.py", "first_boot.py", "build", "run"])
@@ -80,61 +80,76 @@ class LocalTests(unittest.TestCase):
         self.assertEqual(cmds[3][-1], "/out/native-ubi-local-1")
 
 
-def overlay_tar(name="package/x28-leds/files/x"):
+def bundle(tamper=False, extra=None, kmods=True):
+    """An x28-assembly tarball: one top folder with the rootfs, overlay, kmods, ipk and its own SHA256SUMS."""
+    files = {"openwrt-23.05.5-armsr-armv8-rootfs.tar.gz": b"userspace", "userspace.manifest": b"m", "overlay/package/x28-leds/files/x": b"x",
+             "ipk/alsa-lib_1.ipk": b"a", "ipk/libstdcpp6_1.ipk": b"c", "ipk/ipset_1.ipk": b"i", "ipk/libipset13_1.ipk": b"l", "ipk/x28-ipset-kernel_1.ipk": b"k"}
+    if kmods:
+        files.update({"kmods/wireguard.ko": b"w", "kmods/xt_TPROXY.ko": b"t"})
+    files.update(extra or {})
+    top = "x28-assembly-v1"
+    sums = "".join(f"{images.sha256(b'bad' if tamper and n.endswith('wireguard.ko') else d)}  ./{n}\n" for n, d in sorted(files.items()))
     buf = io.BytesIO()
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        info = tarfile.TarInfo(name)
-        info.size = 1
-        tar.addfile(info, io.BytesIO(b"x"))
+        for name, data in {**files, "SHA256SUMS": sums.encode()}.items():
+            info = tarfile.TarInfo(f"{top}/{name}")
+            info.size = len(data)
+            tar.addfile(info, io.BytesIO(data))
     return buf.getvalue()
 
 
-def public_inputs(tamper=False):
-    blobs, assets = {}, {"latest": [], "feed-2": []}
+def public_inputs(tamper=False, **kw):
+    blob = bundle(**kw)
+    url = "u/v1/x28-assembly-v1.tar.gz"
 
-    def add(tag, name, data):
-        url = f"u/{tag}/{name}"
-        blobs[url] = data
-        assets[tag].append({"name": name, "browser_download_url": url, "digest": "sha256:" + images.sha256(b"x" if tamper else data)})
-
-    add("latest", "x28-userspace-v1-openwrt-23.05.5-armsr-armv8-rootfs.tar.gz", b"userspace")
-    add("latest", "x28-overlay-v1.tar.gz", overlay_tar())
-    add("latest", "SHA256SUMS", b"ignored")
-    for name in ("ipset_1.ipk", "libipset13_1.ipk", "x28-ipset-kernel_1.ipk", "kmod-other.ipk"):
-        add("feed-2", name, name.encode())
-    for name, (base, want) in images.EXTRA_IPKS.items():
-        blobs[base + name] = name.encode()
-
-    def fetch(url):
-        if "api.github" in url:
-            tag = "feed-2" if url.endswith("tags/feed-2") else "latest"
-            rels = [{"tag_name": "v1", "assets": assets[tag]}]
-            return json.dumps(rels if tag == "latest" else rels[0]).encode()
-        return blobs[url]
+    def fetch(u):
+        if "api.github" in u:
+            return json.dumps({"tag_name": "v1", "assets": [{"name": "x28-assembly-v1.tar.gz", "browser_download_url": url,
+                                                              "digest": "sha256:" + images.sha256(b"x" if tamper else blob)}]}).encode()
+        return blob
     return fetch
 
 
 class InputTests(unittest.TestCase):
-    def test_extra_ipk_hashes_are_checked(self):
-        with mock.patch.dict(images.EXTRA_IPKS, {n: (b, "0" * 64) for n, (b, _) in images.EXTRA_IPKS.items()}):
-            with self.assertRaises(ValueError):
-                images.fetch_inputs(Path(tempfile.mkdtemp()), fetch=public_inputs())
-
-    def test_a_mismatch_keeps_nothing(self):
+    def test_a_download_that_does_not_match_its_digest_keeps_nothing(self):
         dest = Path(tempfile.mkdtemp())
         with self.assertRaises(ValueError):
-            images.fetch_inputs(dest, fetch=public_inputs(tamper=True))
+            images.fetch_inputs(dest, "v1", fetch=public_inputs(tamper=True))
         self.assertEqual(list(dest.iterdir()), [])
 
-    def test_overlay_is_extracted_and_escapes_are_refused(self):
-        dest = Path(tempfile.mkdtemp())
-        with mock.patch.dict(images.EXTRA_IPKS, {n: (b, images.sha256(n.encode())) for n, (b, _) in images.EXTRA_IPKS.items()}):
-            out = images.fetch_inputs(dest, fetch=public_inputs())
+    def test_the_bundle_is_unpacked_and_its_ipks_split_between_the_feed_and_the_rest(self):
+        out = images.fetch_inputs(Path(tempfile.mkdtemp()), "v1", fetch=public_inputs())
+        self.assertTrue(out["modern"].endswith("-rootfs.tar.gz") and Path(out["modern"]).is_file())
         self.assertTrue((Path(out["overlay"]) / "package/x28-leds/files/x").is_file())
+        self.assertEqual(sorted(p.name for p in Path(out["kmods"]).glob("*.ko")), ["wireguard.ko", "xt_TPROXY.ko"])
+        self.assertEqual(sorted(Path(p).name for p in out["feed"]), ["ipset_1.ipk", "libipset13_1.ipk", "x28-ipset-kernel_1.ipk"])
+        self.assertEqual(sorted(Path(p).name for p in out["extra_ipks"]), ["alsa-lib_1.ipk", "libstdcpp6_1.ipk"])
+
+    def test_a_file_that_differs_from_the_bundles_own_checksums_is_refused(self):
+        dest = Path(tempfile.mkdtemp())
+        with self.assertRaisesRegex(ValueError, "checksum"):
+            images.fetch_inputs(dest, "v1", fetch=self._tampered())
+        self.assertFalse(any(p.is_dir() for p in dest.iterdir()))
+
+    def _tampered(self):
+        blob = bundle(tamper=True)
+        return lambda u: json.dumps({"tag_name": "v1", "assets": [{"name": "x28-assembly-v1.tar.gz", "browser_download_url": "u", "digest": "sha256:" + images.sha256(blob)}]}).encode() if "api.github" in u else blob
+
+    def test_entries_that_escape_the_bundle_are_refused(self):
+        dest = Path(tempfile.mkdtemp())
         bad = dest / "bad.tar.gz"
-        bad.write_bytes(overlay_tar("../evil"))
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            info = tarfile.TarInfo("top/../evil")
+            info.size = 1
+            tar.addfile(info, io.BytesIO(b"x"))
+        bad.write_bytes(buf.getvalue())
         with self.assertRaises(ValueError):
-            images.extract_overlay(bad, dest / "bad")
+            images.extract_bundle(bad, dest / "out")
+
+    def test_a_bundle_without_kernel_modules_is_refused(self):
+        with self.assertRaisesRegex(RuntimeError, "missing"):
+            images.fetch_inputs(Path(tempfile.mkdtemp()), "v1", fetch=public_inputs(kmods=False))
 
     def test_stock_extraction_is_offline_and_read_only(self):
         cmd = images.stock_command(Path("/b/rootfs_b.bin"), Path("/o"), Path("/r"))
@@ -149,21 +164,21 @@ if __name__ == "__main__":
 
 class ReleaseListTests(unittest.TestCase):
     def test_lists_only_releases_with_the_userspace_tarball(self):
-        rels = [{"tag_name": "v0.60.0", "published_at": "2026-11-06T01:00:00Z", "prerelease": True, "assets": [{"name": "x28-userspace-v0.60.0-x-rootfs.tar.gz"}]},
+        rels = [{"tag_name": "v0.60.0", "published_at": "2026-11-06T01:00:00Z", "prerelease": True, "assets": [{"name": "x28-assembly-v0.60.0.tar.gz"}]},
                 {"tag_name": "feed-2", "assets": [{"name": "ipset.ipk"}]},
-                {"tag_name": "v0.59.0", "published_at": "2026-11-05T01:00:00Z", "assets": [{"name": "x28-userspace-v0.59.0-x-rootfs.tar.gz"}]}]
+                {"tag_name": "v0.59.0", "published_at": "2026-11-05T01:00:00Z", "assets": [{"name": "x28-assembly-v0.59.0.tar.gz"}]}]
         got = images.releases(fetch=lambda url: json.dumps(rels).encode())
         self.assertEqual(got, [{"tag": "v0.60.0", "date": "2026-11-06", "beta": True}, {"tag": "v0.59.0", "date": "2026-11-05", "beta": False}])
 
 
 class FrozenBuildTests(unittest.TestCase):
-    def test_frozen_build_runs_the_scripts_with_the_binarys_own_interpreter_and_no_key_flag_without_a_key(self):
-        inputs = {"stock": "s", "modern": "m", "extra_ipks": ["a"], "feed": ["f"]}
+    def test_frozen_build_runs_the_scripts_with_the_binarys_own_interpreter_and_passes_no_key_flag_without_a_key(self):
+        inputs = {"stock": "s", "modern": "m", "extra_ipks": ["a"], "kmods": "km", "feed": ["f"]}
         cmds = images.local_commands(inputs, Path("/w"), Path("/o/img"), Path("/repo"), ["/app/x28-flasher", "--run-script"])
         self.assertEqual(cmds[0][:3], ["/app/x28-flasher", "--run-script", "/repo/tools/build/stage_native.py"])
         self.assertEqual(cmds[1][:3], ["/app/x28-flasher", "--run-script", "/repo/tools/build/first_boot.py"])
         self.assertNotIn("--public-key", cmds[1])
-        self.assertNotIn("--kmods", cmds[1])
+        self.assertEqual(cmds[1][cmds[1].index("--kmods") + 1], "km")
 
 
 class SupportedReleaseTests(unittest.TestCase):
@@ -171,5 +186,5 @@ class SupportedReleaseTests(unittest.TestCase):
         for tag, ok in (("v0.53.3", False), ("v0.53.2", False), ("v0.52.0", False), ("v0.30.3", False), ("v0.53.4", True), ("v0.54.0", True), ("v1.0.0", True),
                         ("feed-2", False), ("kmods-4.19.205", False)):
             self.assertEqual(images.supported(tag), ok, tag)
-        rels = [{"tag_name": t, "assets": [{"name": f"x28-userspace-{t}-x-rootfs.tar.gz"}]} for t in ("v0.54.0", "v0.53.1")]
+        rels = [{"tag_name": t, "assets": [{"name": f"x28-assembly-{t}.tar.gz"}]} for t in ("v0.54.0", "v0.53.1")]
         self.assertEqual([r["tag"] for r in images.releases(fetch=lambda url: json.dumps(rels).encode())], ["v0.54.0"])

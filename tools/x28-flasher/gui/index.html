@@ -101,7 +101,7 @@ const ICON = {
 const svg = (d, c = "currentColor", n = 18) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
 const MENU = [
   ["backup", "Backup", "Save every partition on the board to this computer. Do this first."],
-  ["build", "Build image", "Downloads the newest userspace release from GitHub and assembles the firmware image from your backup."],
+  ["build", "Build image", "Downloads a release's assembly bundle from GitHub and assembles the firmware image from it and your backup."],
   ["flash", "Flash OpenWrt", "Rehearse, then write an image to slot A. Every guard and typed confirmation stays."],
   ["read", "Read & verify", "Read one partition from the board and compare it with your backup. Writes nothing."],
   ["test", "Self-test", "Check setup, the patched library and a real read. Writes nothing."],
@@ -331,7 +331,7 @@ function viewBuild() {
   if (!S.releases && !S.relError) api("/api/releases", {}).then((r) => { S.releases = r.releases; if (S.screen === "build") drawView(); }, (e) => { S.relError = "Could not load the release list: " + e.message; if (S.screen === "build") drawView(); });
   const st = S.st, b = st.build, sel = (id, items, empty) => items.length ? `<select id="${id}">${items.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}</select>` : `<input type="text" id="${id}" placeholder="${empty}">`;
   const blocked = !b.docker ? "Docker is not installed. Install and start Docker Desktop, then reload." : !b.backups.length ? "Build needs a finished backup. Run Backup to the end first, or choose a backup folder below." : "";
-  return `${head("Build image", "Downloads the newest userspace release from GitHub (each file checked against its SHA-256) and assembles the firmware image from your backup. Writes only under private/build; nothing touches the modem.")}
+  return `${head("Build image", "Downloads the release's assembly bundle from GitHub (checked against its SHA-256) and assembles the firmware image from it and your backup. Writes only under private/build; nothing touches the modem.")}
   <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
     <label class="f"><span class="lbl">Backup to build from</span><span style="display:flex;gap:8px">${sel("bd-backup", b.backups, "Folder of a finished backup")}<button type="button" class="btn" data-act="browse" data-target="bd-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
     <label class="f"><span class="lbl">Version to build</span>${S.releases ? `<select id="bd-tag">${S.releases.map((r, i) => `<option value="${esc(r.tag)}" ${i === pick ? "selected" : ""}>${esc(r.tag)}  ${r.beta ? "beta" : "stable"}  ·  ${esc(r.date)}${i === 0 ? "  ·  newest" : ""}${i === pick && !r.beta ? "  ·  recommended" : ""}</option>`).join("")}</select><span class="mut" style="font-size:12.5px">${S.releases.some((r) => !r.beta) ? "Stable releases are tested; beta ones are pre-releases. The newest stable one is selected." : "Every release is still a beta; the newest is selected."}</span>` : `<span class="mut">${S.relError ? esc(S.relError) : "Loading the release list from GitHub…"}</span>`}</label>

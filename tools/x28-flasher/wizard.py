@@ -255,7 +255,7 @@ def build_local(fl, ui, cfg, dest, given):
     cache = dest / "inputs"
     cache.mkdir(parents=True, exist_ok=True)
     try:
-        print("  " + paint("Fetching the public inputs (userspace, feed packages, OpenWrt ipks), each checked against its SHA-256...", "dim"))
+        print("  " + paint("Fetching the release's assembly bundle (userspace, package files, kernel modules, extra packages), checked against its SHA-256...", "dim"))
         inputs = images.fetch_inputs(cache, given["tag"])
         stock = cache / "rootfs-b-system.tar.gz"
         if not stock.is_file():
