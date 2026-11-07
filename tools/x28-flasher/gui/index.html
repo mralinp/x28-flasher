@@ -210,6 +210,7 @@ function watch(id, kind) {
     const d = JSON.parse(e.data), j = S.job;
     if (!j || j.id !== id) return es.close();
     j.lines.push(...d.lines); j.tail = d.tail; j.code = d.code;
+    powerStep(j);
     drawConsole();
     if (d.code !== null) {
       es.close();
@@ -233,7 +234,7 @@ async function start(action, params = {}) {
 /* ---------- screens ---------- */
 function go(id) {
   S.screen = id;
-  if (!(S.pw && S.pw.step === 3 && busy())) S.pw = null;  // the power wizard keeps its console while its job runs
+  if (!(S.pw && busy() && (S.pw.step === 3 || S.pw.attach))) S.pw = null;  // the power wizard keeps its console while its job runs
   clearInterval(S.uartTimer);
   drawSide(); drawView();
 }
@@ -289,6 +290,16 @@ function openPower(kind, params) {
   S.screen = kind === "identify" ? "wizard" : S.screen;
   drawSide(); drawView();
 }
+/* A write job asks for the typed phrase first and then waits for the modem to be power-cycled: the same Power off, 10 s, Power on steps as Backup
+   run in the page when the tool says so; the job is already running, so nothing is started when they finish. */
+const POWER_OFF = "modem power must be OFF now", CONNECTED = /Preloader|DAXML|DA\d/;
+function powerStep(j) {
+  if (!WRITES.includes(j.kind)) return;
+  const at = j.lines.findIndex((l) => l.includes(POWER_OFF));
+  if (at < 0) return;
+  if (!S.pw && !j.pwShown) { j.pwShown = true; S.pw = { step: 1, count: 10, kind: j.kind, attach: true }; drawView(); }
+  else if (S.pw && S.pw.attach && S.pw.step === 3 && j.lines.slice(at + 1).some((l) => CONNECTED.test(l))) { S.pw = null; drawView(); }
+}
 function pwNext() {
   const p = S.pw;
   p.step = 2; p.count = 10; drawView();
@@ -298,6 +309,7 @@ function pwNext() {
     if (p.count > 0) return drawView();
     clearInterval(p.timer);
     p.step = 3; drawView();
+    if (p.attach) return;
     if (!(await start(p.kind, p.params))) { S.pw = null; drawView(); } else drawView();
   }, 1000);
 }
@@ -384,7 +396,7 @@ function viewWrite(action) {
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:20px"><button class="btn" data-act="risk-cancel" style="height:44px;padding:0 22px">Cancel</button><button class="primary" data-act="write" data-run="${action}">I accept the risk, start</button></div>
   </dialog>`}
-  ${started ? consoleHtml() : ""}`;
+  ${started ? (S.pw && S.pw.attach ? powerWizard() : consoleHtml()) : ""}`;
 }
 function viewUart() {
   const st = S.st, u = st.uart && st.uart.running ? st.uart : null;
@@ -431,7 +443,7 @@ document.addEventListener("click", async (e) => {
   if (t.dataset.go) return go(t.dataset.go);
   if (t.dataset.send !== undefined) return api(`/api/job/${S.job.id}/input`, { text: t.dataset.send });
   const a = t.dataset.act;
-  if (busy() && STARTS.includes(a)) return;
+  if (busy() && STARTS.includes(a) && !(a === "pw-next" && S.pw && S.pw.attach)) return;
   if (a === "connect") { S.screen = "wizard"; return openPower("identify", {}); }
   if (a === "quit") {
     try { await api("/api/quit", {}); } catch (er) { return alert(er.message); }

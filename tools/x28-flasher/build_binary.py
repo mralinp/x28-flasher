@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 TOOLS = HERE.parent
 sys.path.insert(0, str(TOOLS / "recovery"))
 XML = "mtkclient/Library/DA/xmlflash/xml_lib.py"
-BUILD_FILES = ("package_ubi.py", "stage_native.py", "ab_guard.py")
+BUILD_FILES = ("package_ubi.py", "stage_native.py", "ab_guard.py", "stock_access.py")
 
 
 def run(*cmd, **kw):
