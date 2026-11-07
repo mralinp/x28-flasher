@@ -121,6 +121,7 @@ class PolicyTests(unittest.TestCase):
         self.assertIn('/dev/tz_gpio_leds',tree['sbin/x28-leds'][1].decode())
         self.assertEqual(tree['sbin/x28-leds'][0].mode,0o755)
         self.assertEqual(tree['etc/rc.d/S97x28-wps'][0].linkname,'../init.d/x28-wps')
+        self.assertEqual(tree['etc/rc.d/S05x28-wifi-l1'][0].linkname,'../init.d/x28-wifi-l1')
         self.assertIn('/dev/tz_gpio_keys',tree['sbin/x28-wps'][1].decode())
         self.assertEqual(tree['etc/rc.d/S19x28-modem'][0].linkname,'../init.d/x28-modem')
         for service in MODEM_SERVICES:self.assertIn('etc/init.d/'+service,tree)

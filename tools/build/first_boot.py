@@ -27,7 +27,7 @@ from inventory import elf_dynamic
 ROOT = Path(os.environ.get('X28_OVERLAY') or Path(__file__).resolve().parents[2]/'overlay')
 
 # S80ucitrack: LuCI's apply restarts non-procd services such as Passwall2 only through its triggers (#198).
-ALLOWED_START = {'S00urngd','S80ucitrack','S10boot','S10system','S11sysctl','S12log','S18x28-switch','S12rpcd','S19firewall','S19x28-modem','S19dropbear','S19dnsmasq','S20network','S35odhcpd','S50uhttpd','S95done','S96x28-bootok','S96x28-dhcp','S97x28-wps','S99x28-leds'}
+ALLOWED_START = {'S00urngd','S05x28-wifi-l1','S80ucitrack','S10boot','S10system','S11sysctl','S12log','S18x28-switch','S12rpcd','S19firewall','S19x28-modem','S19dropbear','S19dnsmasq','S20network','S35odhcpd','S50uhttpd','S95done','S96x28-bootok','S96x28-dhcp','S97x28-wps','S99x28-leds'}
 ALLOWED_STOP = {'K50dropbear','K89log','K90boot','K90network','K90umount'}
 
 LAN = 'br-lan'
@@ -318,6 +318,9 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
     put('sbin/x28-leds',(LEDS/'x28-leds').read_text(),0o755)
     put('sbin/x28-wps',(WIFI/'x28-wps').read_text(),0o755)
     put('etc/init.d/x28-wps',(WIFI/'x28-wps.init').read_text(),0o755);enable(97,'x28-wps')
+    # Matches l1profile.dat to the Wi-Fi chips on PCI before mt_wifi loads (S10boot): the original X28 has one chip, the PRO two.
+    put('sbin/x28-wifi-l1',(WIFI/'x28-wifi-l1').read_text(),0o755)
+    put('etc/init.d/x28-wifi-l1',(WIFI/'x28-wifi-l1.init').read_text(),0o755);enable('05','x28-wifi-l1')
     # The staged boot script runs `wifi config` once when /etc/config/wireless is missing: WPA2 with a random key.
     put('lib/netifd/wireless/mtwifi.sh',(WIFI/'mtwifi.sh').read_text(),0o755)
     put('lib/wifi/mtwifi.sh',(WIFI/'mtwifi.detect').read_text())
