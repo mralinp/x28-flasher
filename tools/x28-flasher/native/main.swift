@@ -30,12 +30,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate {
                           backing: .buffered, defer: false)
         window.title = "X28 Flasher"
         window.contentView = web
-        window.backgroundColor = NSColor(red: 0.051, green: 0.059, blue: 0.075, alpha: 1)
+        window.backgroundColor = NSColor(name: nil) { a in  // follows the system: the page's own --bg in dark and light
+            a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(red: 0.051, green: 0.059, blue: 0.075, alpha: 1) : NSColor(red: 0.957, green: 0.965, blue: 0.976, alpha: 1)
+        }
         window.center()
         window.setFrameAutosaveName("X28FlasherWindow")
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        web.loadHTMLString("<body style='background:#0d0f13;color:#9aa3b2;font:14px -apple-system;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Starting…</body>", baseURL: nil)
+        web.loadHTMLString("<style>:root{color-scheme:light dark}@media(prefers-color-scheme:dark){body{background:#0d0f13;color:#9aa3b2}}@media(prefers-color-scheme:light){body{background:#f4f6f9;color:#586274}}</style><body style='font:14px -apple-system;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>Starting…</body>", baseURL: nil)
         let started = Date()
         Timer.scheduledTimer(withTimeInterval: 0.3, repeats: true) { [weak self] timer in
             guard let self = self else { return timer.invalidate() }
@@ -45,7 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKUIDelegate {
                 self.web.load(URLRequest(url: URL(string: "http://127.0.0.1:\(r.port)/?t=\(r.token)")!))
             } else if Date().timeIntervalSince(started) > 45 {
                 timer.invalidate()
-                self.web.loadHTMLString("<body style='background:#0d0f13;color:#f87171;font:14px -apple-system;padding:48px'>The backend did not start. See ~/Library/Logs/x28-flasher.log</body>", baseURL: nil)
+                self.web.loadHTMLString("<style>:root{color-scheme:light dark}@media(prefers-color-scheme:dark){body{background:#0d0f13}}@media(prefers-color-scheme:light){body{background:#f4f6f9}}</style><body style='color:#d33;font:14px -apple-system;padding:48px'>The backend did not start. See ~/Library/Logs/x28-flasher.log</body>", baseURL: nil)
             }
         }
         Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in

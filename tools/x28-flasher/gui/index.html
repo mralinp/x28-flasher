@@ -6,7 +6,8 @@
 <title>X28 Flasher</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 256 256%22%3E%3Crect width=%22256%22 height=%22256%22 rx=%2256%22 fill=%22%230F1B2D%22/%3E%3Cg transform=%22translate(25.6 25.6) scale(0.8)%22%3E%3Cpath fill=%22%23E6EDF3%22 d=%22M159.82 195.18L182.45 217.8A25 25 0 0 0 217.8 182.45L195.18 159.82A25 25 0 0 0 159.82 195.18ZM60.82 159.82L38.2 182.45A25 25 0 0 0 73.55 217.8L96.18 195.18A25 25 0 0 0 60.82 159.82ZM96.18 60.82L73.55 38.2A25 25 0 0 0 38.2 73.55L60.82 96.18A25 25 0 0 0 96.18 60.82ZM195.18 96.18L217.8 73.55A25 25 0 0 0 182.45 38.2L159.82 60.82A25 25 0 0 0 195.18 96.18Z%22/%3E%3Cpath fill=%22%232DD4BF%22 d=%22M124.61 101.39Q128 98 131.39 101.39L154.61 124.61Q158 128 154.61 131.39L131.39 154.61Q128 158 124.61 154.61L101.39 131.39Q98 128 101.39 124.61Z%22/%3E%3C/g%3E%3C/svg%3E">
 <style>
-:root{--bg:#0d0f13;--panel:#11141a;--card:#151922;--line:#232834;--line2:#2b3240;--tx:#e6e8ec;--mut:#9aa3b2;--acc:#5eead4;--ok:#4ade80;--warn:#f5b84a;--bad:#f87171}
+:root{--bg:#0d0f13;--panel:#11141a;--card:#151922;--line:#232834;--line2:#2b3240;--tx:#e6e8ec;--mut:#9aa3b2;--acc:#5eead4;--ok:#4ade80;--warn:#f5b84a;--bad:#f87171;--hov:#1f2530;--acc-hi:#7ff3e2;--hov2:#1b212b;--acc-bg:#1c2a2b;--dim:#6b7385;--line3:#3a4354;--hov3:#191e29;--acc-line:#2f6f68;--inset:#0a0c10;--warn-bg:#2a2114;--note-tx:#9be8dc;--note-bg:#162826;--bad-bg:#2a1618;--line4:#1d222c;--pre:#c4cad6;--on-acc:#04201d;color-scheme:dark}
+@media(prefers-color-scheme:light){:root{--bg:#f4f6f9;--panel:#fff;--card:#fff;--line:#dde2ea;--line2:#c9d0db;--tx:#161a22;--mut:#586274;--acc:#0f766e;--ok:#15803d;--warn:#a15c07;--bad:#b91c1c;--hov:#eef1f6;--acc-hi:#115e59;--hov2:#eef1f6;--acc-bg:#e0f2f0;--dim:#8a93a3;--line3:#aeb8c7;--hov3:#f7f9fc;--acc-line:#7cc4bc;--inset:#f1f4f8;--warn-bg:#fdf1dc;--note-tx:#0b4f49;--note-bg:#e0f2f0;--bad-bg:#fde8e8;--line4:#e6eaf0;--pre:#2b3342;--on-acc:#fff;color-scheme:light}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.45 Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
 button,input,select{font:inherit;color:inherit}
@@ -25,41 +26,41 @@ p{margin:0}
 .lead{font-size:14px;line-height:1.5;color:var(--mut)}
 .lbl{font-size:11.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--mut)}
 .btn{height:32px;padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:transparent;font-size:13px}
-.btn:hover{background:#1f2530}
-.primary{height:44px;padding:0 28px;border-radius:10px;border:0;background:var(--acc);color:#04201d;font-size:14px;font-weight:600}
-.primary:hover:not(:disabled){background:#7ff3e2}
+.btn:hover{background:var(--hov)}
+.primary{height:44px;padding:0 28px;border-radius:10px;border:0;background:var(--acc);color:var(--on-acc);font-size:14px;font-weight:600}
+.primary:hover:not(:disabled){background:var(--acc-hi)}
 .primary:disabled,.btn:disabled{opacity:.45;cursor:not-allowed}
 .mi{display:flex;align-items:center;gap:12px;width:100%;height:42px;padding:0 12px;border-radius:8px;border:0;background:transparent;font-size:13.5px;text-align:left}
-.mi:hover:not(:disabled){background:#1b212b}
-.mi.on{background:#1c2a2b;color:var(--acc)}
-.mi:disabled{color:#6b7385;cursor:not-allowed}
+.mi:hover:not(:disabled){background:var(--hov2)}
+.mi.on{background:var(--acc-bg);color:var(--acc)}
+.mi:disabled{color:var(--dim);cursor:not-allowed}
 .card{display:flex;flex-direction:column;gap:8px;padding:18px;min-height:128px;border-radius:12px;border:1px solid var(--line);background:var(--card);text-align:left}
-.card:hover:not(:disabled){border-color:#3a4354;background:#191e29}
-.card.start{border-color:#2f6f68}
+.card:hover:not(:disabled){border-color:var(--line3);background:var(--hov3)}
+.card.start{border-color:var(--acc-line)}
 .grid3{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px}
 .box{border:1px solid var(--line);border-radius:12px;background:var(--card)}
-.chip{padding:3px 9px;border-radius:999px;background:#1b212b;border:1px solid var(--line2);color:var(--mut);font-size:11.5px}
+.chip{padding:3px 9px;border-radius:999px;background:var(--hov2);border:1px solid var(--line2);color:var(--mut);font-size:11.5px}
 .chip.on{color:var(--warn)}
 dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:9px 14px;font-size:12.5px}
 dd{margin:0;text-align:right;overflow-wrap:anywhere}
 label.f{display:flex;flex-direction:column;gap:8px}
-input[type=text],input[type=password],select{height:40px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:#0a0c10;font-size:12.5px;width:100%}
+input[type=text],input[type=password],select{height:40px;padding:0 12px;border-radius:8px;border:1px solid var(--line2);background:var(--inset);font-size:12.5px;width:100%}
 .opt{display:block;width:100%;padding:14px 16px;border-radius:10px;border:1px solid var(--line2);background:var(--card);text-align:left}
-.tog{width:48px;height:26px;padding:3px;border-radius:999px;border:1px solid var(--line2);background:#0a0c10;flex:none}
+.tog{width:48px;height:26px;padding:3px;border-radius:999px;border:1px solid var(--line2);background:var(--inset);flex:none}
 .tog i{display:block;width:18px;height:18px;border-radius:50%;background:var(--mut);transition:transform .15s}
 .tog.on i{transform:translateX(22px);background:var(--acc)}
 .tog:disabled{opacity:.5}
 .sw{width:18px;height:18px;accent-color:var(--acc)}
 .chk{display:flex;align-items:center;gap:10px;min-height:28px}
-.warn{padding:12px 16px;border-radius:10px;background:#2a2114;color:var(--warn);line-height:1.5}
-.note{padding:12px 16px;border-radius:10px;background:#162826;color:#9be8dc;line-height:1.5}
-.bad{background:#2a1618;color:var(--bad)}
+.warn{padding:12px 16px;border-radius:10px;background:var(--warn-bg);color:var(--warn);line-height:1.5}
+.note{padding:12px 16px;border-radius:10px;background:var(--note-bg);color:var(--note-tx);line-height:1.5}
+.bad{background:var(--bad-bg);color:var(--bad)}
 table{width:100%;border-collapse:collapse}
 th{position:sticky;top:0;background:var(--card);text-align:left;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);padding:8px}
-td{padding:7px 8px;border-top:1px solid #1d222c;font-size:12.5px}
+td{padding:7px 8px;border-top:1px solid var(--line4);font-size:12.5px}
 .scroll{max-height:340px;overflow:auto}
-pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 ui-monospace,"JetBrains Mono",Menlo,monospace;color:#c4cad6}
-.log{background:#0a0c10;border:1px solid var(--line);border-radius:12px;padding:12px 14px;max-height:340px;min-height:120px;overflow:auto}
+pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.6 ui-monospace,"JetBrains Mono",Menlo,monospace;color:var(--pre)}
+.log{background:var(--inset);border:1px solid var(--line);border-radius:12px;padding:12px 14px;max-height:340px;min-height:120px;overflow:auto}
 .steps{display:flex;align-items:center;gap:12px;list-style:none;margin:0;padding:0}
 .steps li{display:flex;align-items:center;gap:8px}
 .steps i{width:24px;height:24px;border-radius:50%;border:1.5px solid;display:flex;align-items:center;justify-content:center;font-style:normal}
@@ -165,7 +166,7 @@ function drawSide() {
     ${sessionNote()}
     <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" data-act="connect" ${busy() ? "disabled" : ""}>Read again</button>${S.st.session ? `<button class="btn" data-act="disconnect" ${busy() ? "disabled" : ""}>Disconnect</button>` : ""}</div>`;
   } else {
-    h = `<div style="display:flex;align-items:center;gap:10px"><span class="dot" style="background:#6b7385"></span><b style="font-size:15px">No device read yet</b></div>
+    h = `<div style="display:flex;align-items:center;gap:10px"><span class="dot" style="background:var(--dim)"></span><b style="font-size:15px">No device read yet</b></div>
     <p class="mut">Connect reads the hardware ID, MEID, flash and the partitions on the board.</p>
     <button class="primary" data-act="connect" ${busy() ? "disabled" : ""} style="height:42px">Connect device</button>`;
   }
@@ -278,22 +279,22 @@ function viewHome() {
 }
 
 function powerWizard(title) {
-  const p = S.pw, c = (n) => p.step === n ? "var(--acc)" : p.step > n ? "var(--ok)" : "#6b7385";
+  const p = S.pw, c = (n) => p.step === n ? "var(--acc)" : p.step > n ? "var(--ok)" : "var(--dim)";
   const body = p.step === 1 ? `
-      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v9M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--acc)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v9M6.3 6.8a8 8 0 1 0 11.4 0"/></svg>
       <h2>Power off the modem</h2>
       <p class="lead">Switch it off and unplug the power. Keep the USB cable to this computer connected, then press Enter.</p>
       <button class="primary" data-act="pw-next" id="pwgo">Continue ⏎</button>`
     : p.step === 2 ? `
-      <div style="position:relative;width:132px;height:132px"><svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true"><circle cx="66" cy="66" r="54" fill="none" stroke="#232834" stroke-width="8"/><circle cx="66" cy="66" r="54" fill="none" stroke="#5eead4" stroke-width="8" stroke-linecap="round" stroke-dasharray="339.3" stroke-dashoffset="${339.3 * (1 - p.count / 10)}" transform="rotate(-90 66 66)"/></svg>
+      <div style="position:relative;width:132px;height:132px"><svg width="132" height="132" viewBox="0 0 132 132" aria-hidden="true"><circle cx="66" cy="66" r="54" fill="none" style="stroke:var(--line)" stroke-width="8"/><circle cx="66" cy="66" r="54" fill="none" stroke="currentColor" style="color:var(--acc)" stroke-width="8" stroke-linecap="round" stroke-dasharray="339.3" stroke-dashoffset="${339.3 * (1 - p.count / 10)}" transform="rotate(-90 66 66)"/></svg>
       <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:40px">${p.count}</span></div>
       <h2>Keep the power off</h2><p class="lead">Wait 10 seconds. The next step starts by itself.</p>`
-    : WRITES.includes(p.kind) && !p.plug ? `<svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#5eead4" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16v12H4zM8 10h8M8 14h5"/></svg>
+    : WRITES.includes(p.kind) && !p.plug ? `<svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color:var(--acc)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16v12H4zM8 10h8M8 14h5"/></svg>
       <h2>Type the confirmation phrase</h2><p class="lead">Type the exact phrase the tool shows below. Keep the modem unplugged: you plug it in at the next step.</p>`
-    : `<svg class="spin" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="5" stroke-linecap="round" aria-hidden="true"><circle cx="36" cy="36" r="28" stroke="#232834"/><path d="M36 8a28 28 0 0 1 28 28" stroke="#5eead4"/></svg>
+    : `<svg class="spin" width="72" height="72" viewBox="0 0 72 72" fill="none" stroke-width="5" stroke-linecap="round" aria-hidden="true"><circle cx="36" cy="36" r="28" style="stroke:var(--line)"/><path d="M36 8a28 28 0 0 1 28 28" stroke="currentColor" style="color:var(--acc)"/></svg>
       <h2>Power on the modem now</h2><p class="lead">Plug the power in, no buttons. Looking for the device on USB.</p>`;
   return `<div style="display:flex;flex-direction:column;align-items:center;gap:24px;padding-top:12px">
-    <ol class="steps">${["Power off", "Wait", "Power on"].map((l, k) => `<li style="color:${c(k + 1)}"><i>${k + 1}</i>${l}</li>${k < 2 ? '<li style="width:36px;height:1px;background:#2b3240"></li>' : ""}`).join("")}</ol>
+    <ol class="steps">${["Power off", "Wait", "Power on"].map((l, k) => `<li style="color:${c(k + 1)}"><i>${k + 1}</i>${l}</li>${k < 2 ? '<li style="width:36px;height:1px;background:var(--line2)"></li>' : ""}`).join("")}</ol>
     <div class="box center" style="width:min(520px,100%);padding:36px;display:flex;flex-direction:column;align-items:center;gap:18px">${body}</div>
     <div style="width:min(760px,100%)">${consoleHtml()}</div>
     ${busy() ? "" : `<button class="btn" data-act="pw-cancel">Cancel</button>`}</div>`;
