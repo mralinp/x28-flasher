@@ -329,6 +329,8 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
     # Cellular WAN as a stock-looking netifd protocol (#135): the proto handler, its APN helper and the LuCI form.
     put('lib/netifd/proto/x28_mipc.sh',(MIPC/'x28_mipc.sh').read_text(),0o755)
     put('sbin/x28-apn',(MIPC/'x28-apn').read_text(),0o755)
+    for name in ('x28-modem-status','x28-plmn-scan'):  # the LuCI Carrier tab runs these through rpcd (its ACL names them); releases before v0.54 lack them
+        if (MIPC/name).is_file():put('sbin/'+name,(MIPC/name).read_text(),0o755)
     put('www/luci-static/resources/protocol/x28_mipc.js',(LUCI_MIPC/'htdocs/luci-static/resources/protocol/x28_mipc.js').read_text())
     put('usr/share/rpcd/acl.d/luci-proto-x28-mipc.json',(LUCI_MIPC/'root/usr/share/rpcd/acl.d/luci-proto-x28-mipc.json').read_text())
     put('etc/config/system',"""config system
