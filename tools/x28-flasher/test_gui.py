@@ -202,3 +202,15 @@ class ServerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RehearsalMatchTests(unittest.TestCase):
+    def test_a_rehearsal_made_with_other_tool_sources_is_not_offered(self):
+        import wizard
+        with tempfile.TemporaryDirectory() as d:
+            probe = Path(d)
+            for name, tools in (("slot-rootfs_a-identical-new", "T2"), ("slot-rootfs_a-identical-old", "T1")):
+                (probe / name).mkdir()
+                (probe / name / "receipt.json").write_text(json.dumps({"status": "VERIFIED", "created": time.time(), "identity": {"tools": tools}}))
+            self.assertEqual([r.name for r in wizard.verified_identicals(probe, tools="T2")], ["slot-rootfs_a-identical-new"])
+            self.assertEqual(len(wizard.verified_identicals(probe)), 2)  # without a tools digest every verified one counts

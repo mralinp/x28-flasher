@@ -118,8 +118,9 @@ def ask_path(ui, cfg, key, msg, default, is_dir):
     return value
 
 
-def verified_identicals(probe, now=None):
-    """Rehearsal runs a write may build on: VERIFIED and younger than 24 h (the tools enforce the same)."""
+def verified_identicals(probe, now=None, tools=None):
+    """Rehearsal runs a write may build on: VERIFIED, younger than 24 h and, when tools is given, made with the same tool sources (the tools
+    enforce the same, so a rebuild in between means running the rehearsal again)."""
     now = now or time.time()
     out = []
     for receipt in sorted(probe.glob("slot-rootfs_a-identical-*/receipt.json"), key=lambda p: p.stat().st_mtime, reverse=True):
@@ -127,7 +128,7 @@ def verified_identicals(probe, now=None):
             data = json.loads(receipt.read_text())
         except (OSError, ValueError):
             continue
-        if data.get("status") == "VERIFIED" and 0 <= now - data.get("created", 0) <= 86400:
+        if data.get("status") == "VERIFIED" and 0 <= now - data.get("created", 0) <= 86400 and (tools is None or data.get("identity", {}).get("tools") == tools):
             out.append(receipt.parent)
     return out
 
@@ -286,7 +287,7 @@ def build_local(fl, ui, cfg, dest, given):
 def autopilot(fl, ui, cfg):
     """Backup, build, test, rehearsal, write as one job. Each step is the menu entry itself, so every guard and
     typed phrase stays; any failure stops the run and nothing is retried or skipped."""
-    from common import PRIVATE
+    from common import PRIVATE, slot_tools_digest
     print("  " + paint("Backup, Build, Test, then a rehearsal and the write, each with its own confirmation.", "dim"))
     existing = sorted((p.parent for p in PRIVATE.glob("backups/x28-backup-*/ARCHIVE.sha256")), key=lambda d: d.stat().st_mtime, reverse=True)
     if existing and ui.confirm(f"Use the finished backup {existing[0].name} instead of making a new one?", True):
@@ -309,7 +310,7 @@ def autopilot(fl, ui, cfg):
     for title, mode in (("Rehearsal", "identical"), ("Write", "write")):
         print("\n  " + paint(title, "bold"))
         if mode == "write":
-            runs = verified_identicals(PRIVATE / "usb-probe")
+            runs = verified_identicals(PRIVATE / "usb-probe", tools=slot_tools_digest())
             if not runs:
                 return stopped("Rehearsal", 1)
         code = flash(fl, ui, cfg, {"mode": mode, "candidate": image, "base": base})
@@ -338,6 +339,7 @@ def test_readonly(fl, ui, cfg):
 
 def flash(fl, ui, cfg, preset=None):
     import argparse
+    from common import slot_tools_digest
     from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA
     given = json.loads(os.environ["X28_FLASH"]) if os.environ.get("X28_FLASH") else None  # the page's form: only the typed phrase is asked
     if given:
@@ -363,7 +365,7 @@ def flash(fl, ui, cfg, preset=None):
     if mode == "write" and given:
         prior = given.get("prior")
     elif mode == "write":
-        runs = verified_identicals(PRIVATE / "usb-probe")
+        runs = verified_identicals(PRIVATE / "usb-probe", tools=slot_tools_digest())
         if not runs:
             print("  " + bad("No verified rehearsal from the last 24 h. Run the rehearsal first."))
             return 1

@@ -16,7 +16,7 @@ import tempfile
 import time
 
 import slot_session as session
-from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA, backup_table, ensure_venv, loaded_code_matches, sha256_file
+from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA, backup_table, ensure_venv, loaded_code_matches, sha256_file, slot_tools_digest
 from restore_entry import DA_HASH, LAYOUT_HASH, check_uart, check_unit, claim_restore, host_identity, open_da, save
 from write_verify import active_slot
 
@@ -110,13 +110,8 @@ def load_inputs(backup, loader, target, mode, candidate_dir, base_dir=None):
     if (by_name[target]['offset'], by_name[target]['size']) != (spec.addr, spec.size):
         raise ValueError('target identity mismatch')
     host = digest(host_identity().encode())
-    here = Path(__file__).parent
-    tools = b''.join((here / n).read_bytes() for n in ('slot_entry.py', 'slot_session.py', 'restore_entry.py', 'common.py',
-                                                      'read_by_name.py', 'write_verify.py', 'setup_mtkclient.py',
-                                                      'changed_restore.py', 'read_verify.py'))
-    tools += b''.join((here.parent / 'build' / n).read_bytes() for n in ('package_ubi.py', 'stage_native.py'))
     identity = {'target': target, 'original': spec.original_sha, 'candidate': spec.candidate_sha, 'rootfs_a': rootfs_a_sha,
-                'base': spec.base_sha, 'base_head': spec.base_head, 'da': DA_HASH, 'host': host, 'tools': digest(tools), 'unit': by_name['proinfo']['sha256']}
+                'base': spec.base_sha, 'base_head': spec.base_head, 'da': DA_HASH, 'host': host, 'tools': slot_tools_digest(), 'unit': by_name['proinfo']['sha256']}
     return by_name, table, original, candidate, spec, identity, base
 
 

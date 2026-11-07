@@ -170,7 +170,7 @@ def build_command(fl, action, params, loader):
         return action_cmd(fl, action)
     if action == "flash":
         import wizard
-        from common import PRIVATE
+        from common import PRIVATE, slot_tools_digest
         if str(params.get("slot") or "a") != "a":
             raise ValueError("slot B is locked: only slot A can be flashed with this build")
         if params.get("mode") not in ("identical", "write"):
@@ -181,8 +181,8 @@ def build_command(fl, action, params, loader):
             raise ValueError(problem)
         if params.get("copy") and not Path(str(params["copy"])).is_file():
             raise ValueError("the second copy of the backup archive was not found")
-        if params["mode"] == "write" and str(params.get("prior") or "") not in [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe")]:
-            raise ValueError("a write needs a verified rehearsal from the last 24 hours: run the rehearsal first")
+        if params["mode"] == "write" and str(params.get("prior") or "") not in [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe", tools=slot_tools_digest())]:
+            raise ValueError("a write needs a verified rehearsal from the last 24 hours, made with this version of the app: run the rehearsal again")
         if params.get("accept") is not True:
             raise ValueError("accept the risk first: this writes the board")
         return action_cmd(fl, action)
@@ -270,7 +270,7 @@ class App:
     def build_inputs(self):
         """What the Build form offers: finished backups near the usual places, the user's public keys, the kernel-modules folder."""
         import wizard
-        from common import PRIVATE
+        from common import PRIVATE, slot_tools_digest
         desktop = Path.home() / "Desktop"
         roots = {Path(self.fl.default_backup_dir()), Path(self.config().get("backup") or "."), *desktop.glob("x28*")}
         found = []
@@ -279,7 +279,8 @@ class App:
         backups = sorted({str(d) for d in found if wizard.backup_problem(d) is None})
         return {"backups": backups, "docker": bool(shutil.which("docker")),
                 "images": [str(d) for d in wizard.image_dirs(PRIVATE / "build")] if (PRIVATE / "build").is_dir() else [],
-                "rehearsals": [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe")] if (PRIVATE / "usb-probe").is_dir() else []}
+                "rehearsals": [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe", tools=slot_tools_digest())] if (PRIVATE / "usb-probe").is_dir() else [],
+                "stale_rehearsals": len(wizard.verified_identicals(PRIVATE / "usb-probe")) - len(wizard.verified_identicals(PRIVATE / "usb-probe", tools=slot_tools_digest())) if (PRIVATE / "usb-probe").is_dir() else 0}
 
     def state(self):
         from common import DEFAULT_BACKUP, PRIVATE

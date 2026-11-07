@@ -373,7 +373,7 @@ function flashForm() {
       </div></div>
     <label class="f"><span class="lbl">Image to flash</span><select id="fl-image">${optionList(b.images)}</select></label>
     <label class="f"><span class="lbl">Backup of this unit</span><span style="display:flex;gap:8px"><select id="fl-backup">${optionList(b.backups, (v) => v)}</select><button type="button" class="btn" data-act="browse" data-target="fl-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
-    <label class="chk"><input class="sw" type="checkbox" id="fl-rehearse" checked ${b.rehearsals.length ? "" : "disabled"}><span><b>Rehearsal</b> · write the image, read it back and compare. Turn it off for the real write${b.rehearsals.length ? "." : "; that unlocks after a successful rehearsal."}</span></label>
+    <label class="chk"><input class="sw" type="checkbox" id="fl-rehearse" checked ${b.rehearsals.length ? "" : "disabled"}><span><b>Rehearsal</b> · write the image, read it back and compare. Turn it off for the real write${b.rehearsals.length ? "." : b.stale_rehearsals ? "; your last rehearsal was made with an older version of the app, so run it again." : "; that unlocks after a successful rehearsal."}</span></label>
     ${b.rehearsals.length ? `<label class="f" id="fl-prior-row" style="display:none"><span class="lbl">Rehearsal the write builds on (verified, from the last 24 h)</span><select id="fl-prior">${optionList(b.rehearsals)}</select></label>` : ""}
     ${blocked ? `<div class="warn">${esc(blocked)}</div>` : ""}
     <div><button class="primary" data-act="confirm-write" ${blocked || busy() ? "disabled" : ""}>Start…</button></div>

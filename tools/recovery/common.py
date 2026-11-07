@@ -170,6 +170,18 @@ def loaded_code_matches(module):
         return False
 
 
+SLOT_TOOLS = ('slot_entry.py', 'slot_session.py', 'restore_entry.py', 'common.py', 'read_by_name.py', 'write_verify.py', 'setup_mtkclient.py',
+              'changed_restore.py', 'read_verify.py')
+
+
+def slot_tools_digest():
+    """SHA-256 of the sources the rootfs_a/misc tool is made of. A rehearsal receipt records it, and a write refuses a rehearsal made with other
+    tools, so rebuilding the app between the two means running the rehearsal again."""
+    here = Path(__file__).parent
+    data = b''.join((here / n).read_bytes() for n in SLOT_TOOLS) + b''.join((here.parent / 'build' / n).read_bytes() for n in ('package_ubi.py', 'stage_native.py'))
+    return hashlib.sha256(data).hexdigest()
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:
