@@ -85,7 +85,7 @@ def main():
     data += [(TOOLS / "recovery" / "x28-mtd.txt", "recovery")]
     data += [(TOOLS / "build" / n, "build") for n in BUILD_FILES]
     # Build runs these (and mounts tools/ into its container) under the layout REPO/tools/..., which common.REPO points at when frozen
-    data += [(TOOLS / "build" / n, "tools/build") for n in BUILD_FILES + ("first_boot.py", "stock_access.py")]
+    data += [(TOOLS / "build" / n, "tools/build") for n in BUILD_FILES + ("first_boot.py", "stock_access.py", "x28-killswitch.sh")]
     data += [(TOOLS / "firmware" / n, "tools/firmware") for n in ("Dockerfile", "inventory.py")]
     data += [(HERE / "gui" / "index.html", "gui"), (HERE / "device_info.py", "gui")]  # the page and the tool it runs
     if args.loader:

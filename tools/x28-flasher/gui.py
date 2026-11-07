@@ -200,6 +200,8 @@ class App:
                     raise ValueError(f"download agent not found: {loader}")
                 self.config().set("loader", loader)
             argv = build_command(self.fl, action, params, loader)
+            if action == "backup":
+                self.config().set("backup", str(params["out"]).strip())  # Build looks for finished backups here, and beside the usual places
             env = {"X28_RECOVERY": str(self.fl.RECOVERY)}
             if action == "build":
                 env["X28_BUILD"] = json.dumps({k: str(params[k]) for k in ("backup", "tag")})
@@ -248,7 +250,8 @@ class App:
         """What the Build form offers: finished backups near the usual places, the user's public keys, the kernel-modules folder."""
         import wizard
         from common import PRIVATE
-        roots = {Path(self.fl.default_backup_dir()), Path(self.config().get("backup") or ".")}
+        desktop = Path.home() / "Desktop"
+        roots = {Path(self.fl.default_backup_dir()), Path(self.config().get("backup") or "."), *desktop.glob("x28*")}
         found = []
         for root in list(roots):
             found += [root, *(d for d in root.glob("*") if d.is_dir())] if root.is_dir() else []
