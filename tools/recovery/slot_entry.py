@@ -146,7 +146,7 @@ def load_prior(run, expect, spec, mode, verified):
     if not events or events[0] != header or [e for e in events if 'write_attempt' in e] != [attempt]:
         raise ValueError('journal target, image or write history mismatch; no automatic retry')
     if verified:
-        if events[-1].get('status') != 'TARGET_AND_GUARDS_VERIFIED' or \
+        if events[-1].get('status') not in ('TARGET_AND_GUARDS_VERIFIED', 'TARGET_VERIFIED') or \
                 [e for e in events if 'write_result' in e] != [{'write_result': mode, 'acknowledged': True}]:
             raise ValueError('prior run did not finish verified')
     return receipt
@@ -186,6 +186,7 @@ def main():
     ap.add_argument('--uart-log', type=Path)
     ap.add_argument('--no-uart', action='store_true', help='rootfs_a only: no UART log, so no boot log if the new image fails; the way back is a USB restore from the backup')
     ap.add_argument('--no-ssh', action='store_true', help='rootfs_a from stock B only: no live SSH check; the DA read of misc must equal the backup\'s B-selected misc instead')
+    ap.add_argument('--full-checks', action='store_true', help='rootfs_a: also read the neighbour partitions before and after the write (a flash without a base skips them by default)')
     ap.add_argument('--prior-identical', type=Path)
     ap.add_argument('--prior-rootfs-a', type=Path, help='verified rootfs_a write run (misc sessions)')
     ap.add_argument('--resume', type=Path, help='stopped or finished write run, restore mode only')
@@ -281,7 +282,8 @@ def main():
             prior = priors['resume']
             prior['status'] = 'RESTORE_ATTEMPTED'
             save(args.resume.resolve(), prior)
-        session.run_session(mtk.daloader, spec, original, candidate, run, mode=args.mode, base=base)
+        light = args.target == 'rootfs_a' and args.mode in ('identical', 'write') and base is None and not args.full_checks
+        session.run_session(mtk.daloader, spec, original, candidate, run, mode=args.mode, base=base, guards=not light)
         receipt['status'] = 'VERIFIED'
         print('Target and guards verified. No reboot issued; ' + ('after a no-UART flash do not reboot casually until x28-bootok has reset the boot counter.' if args.no_uart else 'review UART before approving the next step.'))
     except BaseException:

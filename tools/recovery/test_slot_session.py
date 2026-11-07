@@ -243,6 +243,26 @@ class BaseModeTests(FakeDA):
             self.run_('write')
         self.assertEqual(len(self.writes), 1)
 
+    def test_light_flash_writes_and_reads_back_only_the_target(self):
+        spec = self.spec._replace(base_sha='', base_head=0)
+        out = s.run_session(self, spec, self.original, self.candidate, self.out, mode='write', base=None, guards=False)
+        self.assertEqual(self.data[0x1000], self.candidate)
+        self.assertEqual((self.writes, self.reads), ([(0x1000, 64)], 1))  # one read: the target after the write
+        events = [json.loads(l) for l in (out / 'journal.jsonl').read_text().splitlines()]
+        self.assertEqual(events[-1], {'status': 'TARGET_VERIFIED'})
+
+    def test_light_flash_stops_when_the_read_back_differs(self):
+        spec = self.spec._replace(base_sha='', base_head=0)
+        self.corrupt = 1
+        with self.assertRaises(ValueError):
+            s.run_session(self, spec, self.original, self.candidate, self.out, mode='write', base=None, guards=False)
+
+    def test_light_checks_are_refused_for_a_restore_or_a_base_session(self):
+        with self.assertRaises(ValueError):
+            s.run_session(self, self.spec._replace(base_sha='', base_head=0), self.original, self.candidate, self.out, mode='restore', guards=False)
+        with self.assertRaises(ValueError):
+            s.run_session(self, self.spec, self.original, self.candidate, self.out, mode='write', base=self.base, guards=False)
+
     def test_original_on_target_is_not_a_valid_start(self):
         self.data[0x1000] = self.original
         with self.assertRaises(ValueError):

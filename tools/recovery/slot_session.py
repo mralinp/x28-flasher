@@ -136,13 +136,19 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def run_session(da, spec, original, candidate, output, *, mode, base=None):
+def run_session(da, spec, original, candidate, output, *, mode, base=None, guards=True):
     """identical: base (default original) over itself. write: candidate over base. restore: original over anything.
 
     The caller owns the session on failure. The journal is evidence, never authority to resume.
+
+    guards=False (a plain rootfs_a flash or rehearsal, no base): no read of the target or the ~17 neighbour partitions before the write and
+    none after it, only the write and a read-back of the target compared with what was written. The unit may have changed since its backup,
+    and that is the owner's business; a restore and a base-image session always keep the full checks.
     """
     if mode not in ('identical', 'write', 'restore'):
         raise ValueError('mode must be identical, write or restore')
+    if not guards and (mode == 'restore' or spec.base_sha):
+        raise ValueError('the neighbour checks can only be skipped for a plain write or rehearsal')
     if not isinstance(original, bytes) or len(original) != spec.size or digest(original) != spec.original_sha:
         raise ValueError('original source identity mismatch')
     start, start_sha = original, spec.original_sha
@@ -206,7 +212,8 @@ def run_session(da, spec, original, candidate, output, *, mode, base=None):
         try:
             record(mode=mode, target=spec.name, target_offset=spec.addr, target_length=spec.size,
                    candidate_sha256=spec.candidate_sha if mode == 'write' else None)
-            check('before', None if mode == 'restore' else start_sha)
+            if guards:
+                check('before', None if mode == 'restore' else start_sha)
             data, want = (candidate, spec.candidate_sha) if mode == 'write' else ((original, spec.original_sha) if mode == 'restore' else (start, start_sha))
             source = out / 'source.bin'
             with source.open('xb') as stream:
@@ -220,10 +227,18 @@ def run_session(da, spec, original, candidate, output, *, mode, base=None):
             record(write_result=mode, acknowledged=ack is True)
             if ack is not True:
                 raise ValueError('STOP: write was not acknowledged; no retry or reboot')
-            say('--- write acknowledged; reading everything back to verify')
-            check('after', want)
-            say('--- verified: target and guards match')
-            record(status='TARGET_AND_GUARDS_VERIFIED')
+            if guards:
+                say('--- write acknowledged; reading everything back to verify')
+                check('after', want)
+                say('--- verified: target and guards match')
+                record(status='TARGET_AND_GUARDS_VERIFIED')
+            else:
+                steps['n'], steps['of'] = 0, 1
+                say('--- write acknowledged; reading the target back to verify')
+                if read('after', spec.name, spec.addr, spec.size) != want:
+                    raise ValueError(f'STOP: after {spec.name} did not match; no retry or reboot')
+                say('--- verified: the target holds exactly the image that was written')
+                record(status='TARGET_VERIFIED')
         except BaseException:
             record(status='STOP_UNVERIFIED_NO_RETRY_OR_REBOOT')
             raise
