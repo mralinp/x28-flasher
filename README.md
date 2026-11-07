@@ -34,10 +34,9 @@ hash-checked.
 | **Read & verify** | Re-reads a partition and compares it with the backup | no |
 | **Build image** | Assembles a native OpenWrt slot image from your own unit's backup plus a firmware release | no |
 | **Flash OpenWrt** | Writes slot A (slot B, stock, is locked) behind a dry run and an equality gate | **yes** |
-| **Self-test** | Checks tools, loader identity and the patched mtkclient | no |
+| **Boot order** | A/B switch for the slot that boots next, over SSH on the running modem | **yes** |
 | **UART monitor** | Captures the serial console to a log the guarded tools require | no |
 | **Stock SSH access** | Sets up key-only SSH on the stock system (needed to change the boot order) | **yes** |
-| **Rescue (slot B)** | Restores the stock slot | **yes** |
 
 ## Install and run
 

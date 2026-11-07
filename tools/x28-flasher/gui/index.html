@@ -103,7 +103,6 @@ const ICON = {
   read: "M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6",
   test: "M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3",
   uart: "M3 12h4l3-8 4 16 3-8h4",
-  rescue: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
   access: "M4 5h16v14H4zM7 10l3 2-3 2M12 15h5",
 };
 const svg = (d, c = "currentColor", n = 18) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
@@ -113,10 +112,8 @@ const MENU = [
   ["flash", "Flash OpenWrt", "Rehearse, then write an image to slot A. Every guard and typed confirmation stays."],
   ["boot", "Boot order", "Choose which slot the modem boots: A (OpenWrt) or B (vendor firmware). Over SSH on the running modem."],
   ["read", "Read & verify", "Read one partition from the board and compare it with your backup. Writes nothing."],
-  ["test", "Self-test", "Check setup, the patched library and a real read. Writes nothing."],
   ["uart", "UART monitor", "Capture the serial console to a log. A flash needs it unless you have no adapter."],
   ["access", "Stock SSH access", "Key-only SSH on the stock firmware (slot B). Builds the image from your backup, rehearses, then writes. No Telnet."],
-  ["rescue", "Rescue (slot B)", "Undo a stock SSH write: put the original slot B tail back from your backup."],
 ];
 const S = { screen: "home", st: null, job: null, es: null, pw: null, uartTimer: null };
 
@@ -418,11 +415,10 @@ function viewBuild() {
   </div>
   ${S.job && S.job.kind === "build" ? consoleHtml() : ""}`;
 }
-const WRITES = ["flash", "access", "rescue"];
+const WRITES = ["flash", "access"];
 const RISK = {
   flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit (if not, cancel and take one first with Backup)", "I will keep the modem powered and the USB cable connected until it finishes", "The tool will ask you to type an exact phrase and to power-cycle the modem; I will do both myself", "No UART log is kept during a flash; start the UART monitor separately to watch the boot", "Without a rehearsal the first write to slot A is the real one", "The flash checks only the slot it writes (read back and compared); it does not read the rest of the board before or after"]],
   access: ["Stock SSH access", "Builds a key-only SSH candidate for slot B from your backup, rehearses it, then writes it. Only the overlay tail of rootfs_b changes.", ["The backup was taken just now, with the unit idle", "I will keep the modem powered and the USB cable connected until it finishes"]],
-  rescue: ["Rescue (slot B)", "Restores the original slot B overlay tail from your backup after a write. Each try is a manual run.", ["I have the backup this unit was written from", "I will keep the modem powered and the USB cable connected until it finishes"]],
 };
 const leaf = (p) => p.split("/").filter(Boolean).pop();
 const imageLabel = (p, i) => { const m = leaf(p).match(/(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)$/); return m ? `Built ${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}${i === 0 ? "  ·  newest" : ""}` : leaf(p); };
@@ -492,10 +488,10 @@ function viewWizard() { return S.pw ? powerWizard() : `${head("Connect device", 
 
 function drawView() {
   const v = { home: viewHome, wizard: viewWizard, backup: viewBackup, uart: viewUart,
-    flash: () => viewWrite("flash"), access: () => viewWrite("access"), rescue: () => viewWrite("rescue"),
+    flash: () => viewWrite("flash"), access: () => viewWrite("access"),
     build: viewBuild, boot: viewBoot,
     read: viewRead,
-    test: () => wizardRunner("Self-test", "Serial ports, backup, download agent and the patched library. Optionally reads lk_b and compares it. Read-only.", "test", "Run self-test") }[S.screen];
+  }[S.screen];
   const away = busy() && S.screen !== jobScreen(S.job.kind);
   $("#view").innerHTML = (away ? `<div class="warn" style="display:flex;align-items:center;gap:12px"><span style="flex:1">A job is running (${esc(S.job.kind)}). Other actions wait until it finishes.</span><button class="btn" data-go="${jobScreen(S.job.kind)}">Show it</button></div>` : "") + v();
   if (away) document.querySelectorAll(STARTS.map((a) => `#view [data-act=${a}]`).join(",")).forEach((b) => { b.disabled = true; });
