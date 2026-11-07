@@ -15,7 +15,7 @@ import tempfile
 import time
 
 import changed_restore as engine
-from common import DEFAULT_BACKUP, FROZEN, MTK_HOME, MTKCLIENT_COMMIT, PRIVATE, VENDOR_DA, backup_table, ensure_venv, sha256_file
+from common import DEFAULT_BACKUP, FROZEN, MTK_HOME, MTKCLIENT_COMMIT, PRIVATE, VENDOR_DA, backup_table, ensure_venv, loaded_code_matches, sha256_file
 from setup_mtkclient import PATCHES
 from write_verify import active_slot
 
@@ -228,7 +228,7 @@ def main():
         check_uart(uart)
         check_unit(mtk.daloader, parts['proinfo'], run)
         xml_module = sys.modules.get('mtkclient.Library.DA.xmlflash.xml_lib')
-        if xml_module is None or sha256_file(Path(xml_module.__file__)) != identity['host']:
+        if xml_module is None or sha256_file(Path(xml_module.__file__)) != identity['host'] or not loaded_code_matches(xml_module):
             raise ValueError('loaded XML implementation differs from verified host')
         engine.run_session(mtk.daloader, original, run, mode=args.mode)
         receipt['status'] = 'VERIFIED'

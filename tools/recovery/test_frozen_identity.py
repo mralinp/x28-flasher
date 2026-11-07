@@ -64,5 +64,32 @@ class FrozenIdentityTests(unittest.TestCase):
         execv.assert_not_called()
 
 
+class LoadedCodeTests(unittest.TestCase):
+    """The build-time equality gate: the compiled code that runs must be the code of the bundled file (#272)."""
+
+    def module(self, loaded_text, file_text):
+        path = Path(tempfile.mkdtemp()) / 'lib.py'
+        path.write_text(file_text)
+        code = compile(loaded_text, 'lib.py', 'exec', dont_inherit=True)
+        loader = type('L', (), {'get_code': lambda self, name: code})()
+        return type('M', (), {'__loader__': loader, '__name__': 'lib', '__file__': str(path)})()
+
+    def test_identical_code_is_accepted(self):
+        with mock.patch.object(common, 'FROZEN', True):
+            self.assertTrue(common.loaded_code_matches(self.module(TEXT, TEXT)))
+
+    def test_compiled_code_that_differs_from_the_bundled_file_is_refused(self):
+        with mock.patch.object(common, 'FROZEN', True):
+            self.assertFalse(common.loaded_code_matches(self.module(TEXT + 'X = 1\n', TEXT)))
+
+    def test_a_module_without_a_code_loader_is_refused(self):
+        with mock.patch.object(common, 'FROZEN', True):
+            self.assertFalse(common.loaded_code_matches(type('M', (), {'__name__': 'x', '__file__': __file__})()))
+
+    def test_outside_the_binary_the_file_is_what_runs(self):
+        with mock.patch.object(common, 'FROZEN', False):
+            self.assertTrue(common.loaded_code_matches(object()))
+
+
 if __name__ == '__main__':
     unittest.main()

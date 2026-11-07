@@ -16,7 +16,7 @@ import tempfile
 import time
 
 import slot_session as session
-from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA, backup_table, ensure_venv, sha256_file
+from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA, backup_table, ensure_venv, loaded_code_matches, sha256_file
 from restore_entry import DA_HASH, LAYOUT_HASH, check_uart, check_unit, claim_restore, host_identity, open_da, save
 from write_verify import active_slot
 
@@ -272,7 +272,7 @@ def main():
             check_uart(uart)
         check_unit(mtk.daloader, parts['proinfo'], run)
         xml_module = sys.modules.get('mtkclient.Library.DA.xmlflash.xml_lib')
-        if xml_module is None or sha256_file(Path(xml_module.__file__)) != identity['host']:
+        if xml_module is None or sha256_file(Path(xml_module.__file__)) != identity['host'] or not loaded_code_matches(xml_module):
             raise ValueError('loaded XML implementation differs from verified host')
         if args.resume:  # claimed only once the DA, unit identity and host library are verified, and just before the session:
             claim_restore(args.resume.resolve(), run)  # a USB failure before this point does not spend the tooled restore

@@ -157,6 +157,19 @@ def run_mtk(args, logname):
     return code, out
 
 
+def loaded_code_matches(module):
+    """The build-time equality gate (#272). In the frozen binary the mtkclient library that runs is the compiled copy inside the archive, while the
+    file next to it, the one that is hashed and pinned, is only a data copy. True only if the code that was loaded is exactly the code of that file;
+    outside the binary the file is what runs."""
+    if not FROZEN:
+        return True
+    try:
+        code = module.__loader__.get_code(module.__name__)
+        return code == compile(Path(module.__file__).read_bytes(), code.co_filename, "exec", dont_inherit=True)
+    except (AttributeError, OSError, SyntaxError, ValueError):
+        return False
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as f:

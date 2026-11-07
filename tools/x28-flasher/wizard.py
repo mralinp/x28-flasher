@@ -287,9 +287,6 @@ def autopilot(fl, ui, cfg):
     """Backup, build, test, rehearsal, write as one job. Each step is the menu entry itself, so every guard and
     typed phrase stays; any failure stops the run and nothing is retried or skipped."""
     from common import PRIVATE
-    if fl.FROZEN:
-        print("  " + warn("Auto pilot ends in a flash, which this build cannot do (#272). Run the steps from the menu, or use a source checkout."))
-        return 0
     print("  " + paint("Backup, Build, Test, then a rehearsal and the write, each with its own confirmation.", "dim"))
     existing = sorted((p.parent for p in PRIVATE.glob("backups/x28-backup-*/ARCHIVE.sha256")), key=lambda d: d.stat().st_mtime, reverse=True)
     if existing and ui.confirm(f"Use the finished backup {existing[0].name} instead of making a new one?", True):
@@ -342,12 +339,14 @@ def test_readonly(fl, ui, cfg):
 def flash(fl, ui, cfg, preset=None):
     import argparse
     from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA
-    if fl.FROZEN:
-        print("  " + warn("This build is read-only. Flash from a source checkout until the build-time equality gate exists (#272)."))
-        return 0
-    backup = ask_path(ui, cfg, "backup", "Folder with your verified backup", DEFAULT_BACKUP, True)
-    loader = ask_path(ui, cfg, "loader", "Vendor download agent file (DA_BR.bin)", VENDOR_DA, False)
-    preset = preset or {}
+    given = json.loads(os.environ["X28_FLASH"]) if os.environ.get("X28_FLASH") else None  # the page's form: only the typed phrase is asked
+    if given:
+        backup, loader = given["backup"], given["loader"]
+        preset = {k: given.get(k) for k in ("mode", "candidate", "base", "no_ssh", "no_uart")}
+    else:
+        backup = ask_path(ui, cfg, "backup", "Folder with your verified backup", DEFAULT_BACKUP, True)
+        loader = ask_path(ui, cfg, "loader", "Vendor download agent file (DA_BR.bin)", VENDOR_DA, False)
+        preset = preset or {}
     mode = preset.get("mode") or ui.select("Which run?", [("Rehearsal: write the image, read it back, compare (identical)", "identical"),
                                     ("Write the image (needs a verified rehearsal from the last 24 h)", "write")])
     images = [(d.name, str(d)) for d in image_dirs(PRIVATE / "build")]
@@ -361,17 +360,19 @@ def flash(fl, ui, cfg, preset=None):
     no_uart = bool(preset["no_uart"] if "no_uart" in preset else ui.confirm(
         "No UART adapter? Then there is no boot log if the new image fails; the way back is a USB restore from your backup.", False))
     prior = None
-    if mode == "write":
+    if mode == "write" and given:
+        prior = given.get("prior")
+    elif mode == "write":
         runs = verified_identicals(PRIVATE / "usb-probe")
         if not runs:
             print("  " + bad("No verified rehearsal from the last 24 h. Run the rehearsal first."))
             return 1
         prior = ui.select("Rehearsal to build on", [(r.name, str(r)) for r in runs])
     print(f"\n  {mode}: {candidate}" + (f"  base {base}" if base else ""))
-    if not ui.confirm("Continue to the UART and the typed confirmation?", True):
+    if not given and not ui.confirm("Continue to the UART and the typed confirmation?", True):
         return 0
     args = argparse.Namespace(mode=mode, candidate_dir=candidate, base_dir=base, prior_identical=prior,
-                              backup_copy=None, backup=backup, loader=loader, no_ssh=no_ssh, no_uart=no_uart)
+                              backup_copy=given.get("copy") if given else None, backup=backup, loader=loader, no_ssh=no_ssh, no_uart=no_uart)
     code = fl.cmd_flash(args, ui)
     print("  " + (good("Done.") if code == 0 else bad(f"Stopped (exit {code}). The run folder above keeps the logs; nothing was retried.")))
     return code
@@ -386,9 +387,6 @@ def flash_b(fl, ui, cfg, mode, candidate):
     """identical | write | restore of the rootfs_b overlay tail through slot_b_entry.py (every guard and the typed phrase stay)."""
     import argparse
     from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA
-    if fl.FROZEN:
-        print("  " + warn("This build is read-only. Flash from a source checkout until the build-time equality gate exists (#272)."))
-        return 0
     backup = ask_path(ui, cfg, "backup", "Folder with a FRESH verified backup of this unit (taken just now, unit idle)", DEFAULT_BACKUP, True)
     loader = ask_path(ui, cfg, "loader", "Vendor download agent file (DA_BR.bin)", VENDOR_DA, False)
     prior = resume = None
@@ -417,9 +415,6 @@ def access(fl, ui, cfg):
     import shutil
     import subprocess
     from common import DEFAULT_BACKUP, PRIVATE, REPO
-    if fl.FROZEN:
-        print("  " + warn("This build is read-only. Run from a source checkout to flash (#272)."))
-        return 0
     last = cfg.get("access_candidate")
     fresh = ui.select("Candidate image", [("Build a new one from my backup and an SSH key", "new")] + ([(f"Use the last one: {Path(last).name}", "last")] if last and Path(last).is_dir() else []))
     if fresh == "new":

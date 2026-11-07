@@ -98,7 +98,25 @@ class CommandTests(unittest.TestCase):
             for params in ({}, {"accept": False}, {"accept": "yes"}):
                 with self.assertRaises(ValueError):
                     gui.build_command(FakeFl, action, params, "DA")
+        for action in ("access", "rescue"):
             self.assertEqual(gui.build_command(FakeFl, action, {"accept": True}, "DA")[-2:], ["run", action])
+
+    def test_flash_checks_slot_image_backup_copy_and_rehearsal(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "img").mkdir()
+            (d / "img/rootfs-a-experimental.bin").write_bytes(b"")
+            (d / "bk/images").mkdir(parents=True)
+            (d / "bk/ARCHIVE.sha256").write_text("x  a.tar")
+            (d / "bk/images/mtd10-rootfs_b.bin").write_bytes(b"")
+            (d / "copy.tar").write_bytes(b"")
+            ok = {"slot": "a", "mode": "identical", "candidate": str(d / "img"), "backup": str(d / "bk"), "copy": str(d / "copy.tar"), "accept": True}
+            self.assertEqual(gui.build_command(FakeFl, "flash", ok, "DA")[-2:], ["run", "flash"])
+            for bad, regex in (({"slot": "b"}, "locked"), ({"mode": "x"}, "rehearsal"), ({"candidate": str(d)}, "built image"),
+                               ({"backup": str(d)}, "ARCHIVE"), ({"copy": str(d / "nope")}, "second copy"), ({"accept": False}, "accept"),
+                               ({"mode": "write", "prior": ""}, "rehearsal")):
+                with self.assertRaisesRegex(ValueError, regex):
+                    gui.build_command(FakeFl, "flash", {**ok, **bad}, "DA")
 
     def test_frozen_runs_itself(self):
         fl = types.SimpleNamespace(FROZEN=True, RECOVERY=Path("/r"))

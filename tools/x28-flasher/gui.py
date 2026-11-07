@@ -168,6 +168,26 @@ def build_command(fl, action, params, loader):
         if not str(params.get("tag") or "").strip():
             raise ValueError("choose the release to build from")
         return action_cmd(fl, action)
+    if action == "flash":
+        import wizard
+        from common import PRIVATE
+        if str(params.get("slot") or "a") != "a":
+            raise ValueError("slot B is locked: only slot A can be flashed with this build")
+        if params.get("mode") not in ("identical", "write"):
+            raise ValueError("choose a rehearsal or the write")
+        if not (Path(str(params.get("candidate") or "")) / "rootfs-a-experimental.bin").is_file():
+            raise ValueError("choose a built image to flash")
+        if params.get("base") and not (Path(str(params["base"])) / "rootfs-a-experimental.bin").is_file():
+            raise ValueError("the image now on slot A is not a built image folder")
+        if problem := wizard.backup_problem(str(params.get("backup") or "")):
+            raise ValueError(problem)
+        if not Path(str(params.get("copy") or "")).is_file():
+            raise ValueError("choose the second copy of the backup archive (complete-captured-partitions.tar, on another drive)")
+        if params["mode"] == "write" and str(params.get("prior") or "") not in [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe")]:
+            raise ValueError("a write needs a verified rehearsal from the last 24 hours: run the rehearsal first")
+        if params.get("accept") is not True:
+            raise ValueError("accept the risk first: this writes the board")
+        return action_cmd(fl, action)
     if action in WRITE_ACTIONS and params.get("accept") is not True:
         raise ValueError("accept the risk first: this writes the board")
     if action in WIZARD_ACTIONS + WRITE_ACTIONS:
@@ -203,6 +223,9 @@ class App:
             if action == "backup":
                 self.config().set("backup", str(params["out"]).strip())  # Build looks for finished backups here, and beside the usual places
             env = {"X28_RECOVERY": str(self.fl.RECOVERY)}
+            if action == "flash":
+                env["X28_FLASH"] = json.dumps({**{k: str(params.get(k) or "") or None for k in ("mode", "candidate", "base", "backup", "copy", "prior")},
+                                               "no_ssh": bool(params.get("no_ssh")), "no_uart": bool(params.get("no_uart")), "loader": loader})
             if action == "build":
                 env["X28_BUILD"] = json.dumps({k: str(params[k]) for k in ("backup", "tag")})
             if self.uart and self.uart["cap"].is_alive():
@@ -256,7 +279,10 @@ class App:
         for root in list(roots):
             found += [root, *(d for d in root.glob("*") if d.is_dir())] if root.is_dir() else []
         backups = sorted({str(d) for d in found if wizard.backup_problem(d) is None})
-        return {"backups": backups, "docker": bool(shutil.which("docker"))}
+        return {"backups": backups, "docker": bool(shutil.which("docker")),
+                "images": [str(d) for d in wizard.image_dirs(PRIVATE / "build")] if (PRIVATE / "build").is_dir() else [],
+                "rehearsals": [str(r) for r in wizard.verified_identicals(PRIVATE / "usb-probe")] if (PRIVATE / "usb-probe").is_dir() else [],
+                "copies": self.fl.find_backup_copies()}
 
     def state(self):
         from common import DEFAULT_BACKUP, PRIVATE

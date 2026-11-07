@@ -19,7 +19,7 @@ import time
 
 import slot_b
 import slot_session as session
-from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA, ensure_venv, sha256_file
+from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA, ensure_venv, loaded_code_matches, sha256_file
 from restore_entry import DA_HASH, check_uart, check_unit, host_identity, open_da, save
 from slot_entry import load_prior, verified_backup
 
@@ -148,7 +148,7 @@ def main():
         os.chdir(run)
         mtk = open_da(run, loader)
         xml_module = sys.modules.get('mtkclient.Library.DA.xmlflash.xml_lib')  # before the first flash command
-        if xml_module is None or sha256_file(Path(xml_module.__file__)) != identity['host']:
+        if xml_module is None or sha256_file(Path(xml_module.__file__)) != identity['host'] or not loaded_code_matches(xml_module):
             raise ValueError('loaded XML implementation differs from verified host')
         if uart:
             check_uart(uart)
