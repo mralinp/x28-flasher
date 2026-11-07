@@ -492,6 +492,8 @@ def make_handler(app):
                 return self.reply(403, b"Open the address that x28-flasher printed in the terminal.", "text/plain")
             if url.path == "/":
                 return self.reply(200, (ASSETS / "index.html").read_bytes(), "text/html; charset=utf-8")
+            if url.path in ("/fonts/inter.woff2", "/fonts/jetbrains-mono.woff2"):
+                return self.reply(200, (ASSETS / url.path.strip("/")).read_bytes(), "font/woff2")
             if url.path == "/api/state":
                 return self.reply(200, app.state())
             if url.path == "/api/boot":

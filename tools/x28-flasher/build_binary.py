@@ -88,6 +88,7 @@ def main():
     data += [(TOOLS / "build" / n, "tools/build") for n in BUILD_FILES + ("first_boot.py", "stock_access.py", "x28-killswitch.sh")]
     data += [(TOOLS / "firmware" / n, "tools/firmware") for n in ("Dockerfile", "inventory.py")]
     data += [(TOOLS / "firmware" / "inventory.py", "firmware")]  # the guarded tools import build/stage_native, which looks for ../firmware/inventory.py
+    data += [(f, "gui/fonts") for f in sorted((HERE / "gui" / "fonts").glob("*"))]  # the same fonts on every system
     data += [(HERE / "gui" / "index.html", "gui"), (HERE / "device_info.py", "gui")]  # the page and the tool it runs
     if args.loader:
         from restore_entry import DA_HASH
