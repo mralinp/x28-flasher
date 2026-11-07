@@ -34,7 +34,7 @@ def ssh(target, cmd, stdin=None, timeout=60, pw=""):
     argv = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
             "-o", "ConnectTimeout=5", "-o", "PubkeyAcceptedAlgorithms=+ssh-rsa", "-o", "HostKeyAlgorithms=+ssh-rsa",  # the stock dropbear only knows ssh-rsa
              "-o", "NumberOfPasswordPrompts=1", "-o", "PreferredAuthentications=publickey,password,keyboard-interactive"]
-    for key in (Path.home() / ".ssh" / "router",):
+    for key in (Path.home() / ".ssh" / "x28_rsa", Path.home() / ".ssh" / "router"):  # the pair Root access makes, then the older one
         if key.is_file():
             argv += ["-i", str(key)]
     try:

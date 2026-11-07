@@ -454,7 +454,7 @@ function viewWrite(action) {
   const started = S.job && S.job.kind === action;
   return `${head(title, sub)}
   ${started ? "" : `${action === "flash" ? flashForm() : `<div class="mut">${uart ? "✓ UART monitor is running; its log is used." : "UART monitor is off. A write needs its log unless you tell the tool you have no adapter."}</div>
-  <div><button class="primary" data-act="confirm-write">Start…</button></div>`}
+  <div><button class="primary" data-act="confirm-write">Start…</button></div>${action === "access" ? unlockBox() : ""}`}
   <dialog id="risk" style="max-width:560px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:inherit;padding:24px">
     <h3 style="margin:0 0 12px">Risk of writing to the modem</h3>
     <div style="display:grid;gap:8px;line-height:1.5">
@@ -467,6 +467,25 @@ function viewWrite(action) {
     <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:20px"><button class="btn" data-act="risk-cancel" style="height:44px;padding:0 22px">Cancel</button><button class="primary" data-act="write" data-run="${action}">I accept the risk, start</button></div>
   </dialog>`}
   ${started ? consoleHtml() : ""}`;
+}
+function unlockBox() {
+  const u = S.unlock || (S.unlock = {}), i = u.info;
+  return `<div class="box" style="padding:18px;display:grid;gap:12px;max-width:760px">
+    <b>Operator lock (SIM lock)</b>
+    <div class="mut">After Root access, with the stock slot B running and reachable over SSH. A fresh unit that refuses other operators' SIMs keeps that lock in its config (SYS_LOCK_OPERATOR_SW and SYS_LOCK_OPERATOR_LIST). This clears those two keys and nothing else; the config is copied to this computer and on the modem first and read back after. It has not been tried on a locked unit, so check what it shows first.</div>
+    <label class="f"><span class="lbl">Modem address (empty: try 192.168.0.1, then :2222)</span><input type="text" id="un-addr" value="${esc(addr())}" placeholder="192.168.0.1"></label>
+    <label class="f"><span class="lbl">Root password (only if it has one; not saved)</span><input type="password" id="un-pw" value="${esc(u.pw || "")}" autocomplete="off"></label>
+    ${u.error ? `<div class="warn">${esc(u.error)}</div>` : ""}
+    ${i ? `<div class="mut">Config file ${esc(i.file)}: operator lock switch <b>${esc(i.values.SYS_LOCK_OPERATOR_SW)}</b>, allowed operators <b>${esc(i.values.SYS_LOCK_OPERATOR_LIST || "none")}</b>. ${i.unlocked ? "No operator lock is set." : "An operator lock is set."}</div>` : ""}
+    ${u.done ? `<div class="note">${esc(u.done)}</div>` : ""}
+    <div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn" data-act="un-check" ${u.working ? "disabled" : ""}>Check the lock</button>
+      <button class="primary" data-act="un-ask" ${u.working || !i || i.unlocked ? "disabled" : ""}>Clear the operator lock</button></div>
+  </div>
+  <dialog id="risk2" style="max-width:560px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:inherit;padding:24px">
+    <h3 style="margin:0 0 12px">Clear the operator lock</h3>
+    <div style="display:grid;gap:8px;line-height:1.5"><div>• Two lines of the stock config change: the lock switch is set to 0 and the operator list is emptied.</div><div>• A copy of the file is saved on this computer and on the modem first, and the result is read back.</div><div>• The modem is not rebooted; the setting takes effect when the stock firmware next reads its config.</div></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px"><button class="btn" data-act="un-cancel" style="height:44px;padding:0 22px">Cancel</button><button class="primary" data-act="un-go">I accept the risk, clear it</button></div>
+  </dialog>`;
 }
 function viewUart() {
   const st = S.st, u = st.uart && st.uart.running ? st.uart : null;
@@ -559,6 +578,20 @@ document.addEventListener("click", async (e) => {
     setTimeout(() => { t.textContent = "Copy address"; }, 2000);
     return;
   }
+  if (a === "un-check" || a === "un-go") {
+    const u = S.unlock, a0 = $("#un-addr").value.trim();
+    u.pw = $("#un-pw").value; u.error = null; u.done = null; u.working = true;
+    try { localStorage.setItem("bootaddr", a0); } catch (e) { /* not saved */ }
+    if (a === "un-go") $("#risk2").close();
+    drawView();
+    try {
+      if (a === "un-check") { const r = await fetch("/api/unlock", { headers: { "X-Addr": a0, "X-Pw": u.pw } }); const j = await r.json(); if (!r.ok) throw new Error(j.error); u.info = j; }
+      else { u.info = await api("/api/unlock", { addr: a0, pw: u.pw }); u.done = "The operator lock keys are cleared."; }
+    } catch (er) { u.error = er.message; }
+    u.working = false; return drawView();
+  }
+  if (a === "un-ask") return $("#risk2").showModal();
+  if (a === "un-cancel") return $("#risk2").close();
   if (a === "boot-reload") { try { localStorage.setItem("bootaddr", $("#boot-addr").value.trim()); } catch (e) { /* not saved */ } const pw = $("#boot-pw").value; S.boot = { pw }; return drawView(); }
   if (a === "boot-pick") { S.boot.sel = (S.boot.sel || S.boot.info.boot) === "a" ? "b" : "a"; return drawView(); }
   if (a === "boot-toggle") { S.boot.pw = $("#boot-pw").value; try { localStorage.setItem("bootaddr", $("#boot-addr").value.trim()); } catch (e) { /* not saved */ } return $("#risk").showModal(); }

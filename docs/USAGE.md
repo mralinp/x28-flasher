@@ -20,6 +20,14 @@ modem). If the unit is not found, repeat the sequence; do not start a write on a
 **Backup** reads every partition over USB and verifies the hashes. **Read & verify** re-reads one partition by name
 and compares it with the backup, read-only. Run it after every write.
 
+### Operator lock (SIM lock)
+
+On the Root access page, for a fresh unit that refuses other operators' SIMs. With the stock slot B running and reachable over SSH, **Check the lock**
+shows the two config keys the stock firmware uses (`SYS_LOCK_OPERATOR_SW`, `SYS_LOCK_OPERATOR_LIST`, in `system_config.use`); **Clear the operator
+lock** sets the switch to 0 and empties the list, after saving a copy of the file on this computer (`~/.x28-flasher/config-backups`) and on the modem,
+and reads it back. Nothing else in the config changes and nothing reboots. It is a software lock only: a code-based (NCK) lock is not touched. This
+was built from the config of unlocked units and has not been tried on a locked one.
+
 ## Build image
 
 Choose a firmware release (the **refresh** button re-fetches the list). The overlay and userspace tarballs are

@@ -502,6 +502,12 @@ def make_handler(app):
                     return self.reply(200, boot_ssh.state(self.headers.get("X-Addr", ""), self.headers.get("X-Pw", "")))
                 except boot_ssh.BootError as err:
                     return self.reply(409, {"error": str(err)})
+            if url.path == "/api/unlock":
+                import stock_config
+                try:
+                    return self.reply(200, stock_config.state(self.headers.get("X-Addr", ""), self.headers.get("X-Pw", "")))
+                except stock_config.BootError as err:
+                    return self.reply(409, {"error": str(err)})
             if url.path == "/api/uart/tail":
                 return self.reply(200, {"text": app.uart_tail(), "status": app.uart_status()})
             parts = url.path.strip("/").split("/")
@@ -570,6 +576,12 @@ def make_handler(app):
                     try:
                         return self.reply(200, boot_ssh.set_slot(str(data.get("slot")), str(data.get("addr") or ""), str(data.get("pw") or "")))
                     except boot_ssh.BootError as err:
+                        raise RuntimeError(str(err))
+                if path == ["api", "unlock"]:  # over SSH on the running stock modem: clears the operator lock keys
+                    import stock_config
+                    try:
+                        return self.reply(200, stock_config.unlock(str(data.get("addr") or ""), str(data.get("pw") or "")))
+                    except stock_config.BootError as err:
                         raise RuntimeError(str(err))
                 if path == ["api", "releases"]:
                     import images
