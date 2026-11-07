@@ -115,12 +115,12 @@ const ICON = {
 const svg = (d, c = "currentColor", n = 18) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
 const MENU = [
   ["backup", "Backup", "Save every partition on the board to this computer. Do this first."],
+  ["access", "Root access", "Root SSH (key only, port 22) on the stock firmware in slot B, with the key you choose or a new one. Builds from a slot B image, rehearses, then writes."],
   ["build", "Build image", "Downloads a release's assembly bundle from GitHub and assembles the firmware image from it and your backup."],
   ["flash", "Flash OpenWrt", "Rehearse, then write an image to slot A. Every guard and typed confirmation stays."],
   ["boot", "Boot order", "Choose which slot the modem boots: A (OpenWrt) or B (vendor firmware). Over SSH on the running modem."],
   ["read", "Read & verify", "Read one partition from the board and compare it with your backup. Writes nothing."],
   ["uart", "UART monitor", "Capture the serial console to a log. A flash needs it unless you have no adapter."],
-  ["access", "Root access", "Root SSH (key only, port 22) on the stock firmware in slot B, with the key you choose or a new one. Builds from a slot B image, rehearses, then writes."],
 ];
 const S = { screen: "home", st: null, job: null, es: null, pw: null, uartTimer: null };
 

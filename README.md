@@ -31,12 +31,12 @@ hash-checked.
 |---|---|---|
 | **Connect** | Power off, wait 10 s, power on: finds the unit over USB (BROM) | no |
 | **Backup** | Reads all partitions over USB into a hash-verified archive, with a second copy | no |
+| **Root access** | Reads a snapshot of slot B and writes key-only SSH (port 22) into it; once, on a fresh unit | **yes** |
 | **Read & verify** | Re-reads a partition and compares it with the backup | no |
 | **Build image** | Assembles a native OpenWrt slot image from your own unit's backup plus a firmware release | no |
 | **Flash OpenWrt** | Writes slot A (slot B, stock, is locked) behind a dry run and an equality gate | **yes** |
 | **Boot order** | A/B switch for the slot that boots next, over SSH on the running modem | **yes** |
 | **UART monitor** | Captures the serial console to a log the guarded tools require | no |
-| **Stock SSH access** | Sets up key-only SSH on the stock system (needed to change the boot order) | **yes** |
 
 ## Install and run
 
@@ -67,10 +67,11 @@ your own build (see [Build](#build-the-app)).
 
 1. **Connect**: power off, wait 10 s, power on.
 2. **Backup**: do this first and keep the copy off the computer you flash from.
-3. **Build image**: pick a firmware release; the overlay and userspace are downloaded and hash-checked.
-4. **Flash OpenWrt**: dry run, then the real write.
-5. **Read & verify**: confirm what landed.
-6. **Stock SSH access / Rescue**: only when you need them.
+3. **Root access**: once on a fresh unit, after the backup: reads a snapshot of slot B and writes key-only SSH into it.
+4. **Build image**: pick a firmware release; the overlay and userspace are downloaded and hash-checked.
+5. **Flash OpenWrt**: dry run, then the real write.
+6. **Read & verify**: confirm what landed.
+7. **Boot order**: switch which slot boots next, when you need to.
 
 Details, prompts and recovery are in **[docs/USAGE.md](docs/USAGE.md)**.
 
