@@ -27,7 +27,7 @@ class BootTests(unittest.TestCase):
     def test_set_slot_writes_last_copy_first_and_stops_on_a_bad_readback(self):
         calls, now = [], {"rec": REC, "bad": False}
 
-        def fake(slot, cmd, stdin=None, timeout=60):
+        def fake(slot, cmd, stdin=None, timeout=60, pw=""):
             calls.append(cmd)
             if "dd-nand" in cmd:
                 new = b.plan(now["rec"], "b").hex() + now["rec"][10:]
