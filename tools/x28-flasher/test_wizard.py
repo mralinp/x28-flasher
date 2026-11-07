@@ -142,6 +142,24 @@ class PlainPromptTests(unittest.TestCase):
         self.assertEqual(key, str(home / ".ssh/router.pub"))  # remembered key is offered first, but it is still asked
         self.assertEqual(seen[0][-1], None)
 
+    def test_slot_b_snapshot_reads_only_the_five_partitions_and_remembers_the_folder(self):
+        home = Path(tempfile.mkdtemp())
+        cfg = wizard.Config(home / "c.json")
+        cfg.set("loader", str(home / "da"))
+        (home / "da").write_text("x")
+        calls = []
+        fl = types.SimpleNamespace(power_off_countdown=lambda: None, run_tool=lambda tool, argv: calls.append((tool, argv)) or 0)
+        ui = types.SimpleNamespace(select=lambda msg, choices: choices[0][1], text=lambda *a, **k: str(home / "da"))
+        with mock.patch.object(wizard, "ask_path", return_value=str(home / "da")), __import__("contextlib").redirect_stdout(__import__("io").StringIO()):
+            out = wizard.slot_b_snapshot(fl, ui, cfg)
+        tool, argv = calls[0]
+        self.assertEqual(tool, "usb_backup.py")
+        self.assertEqual(argv[argv.index("--only") + 1], "proinfo,misc,rootfs_a,rootfs_b,boot_para")
+        self.assertEqual(cfg.get("snapshot"), out)
+        fl.run_tool = lambda tool, argv: 1  # a snapshot that did not finish is not used
+        with mock.patch.object(wizard, "ask_path", return_value=str(home / "da")), __import__("contextlib").redirect_stdout(__import__("io").StringIO()):
+            self.assertIsNone(wizard.slot_b_snapshot(fl, ui, cfg))
+
     def test_choose_key_makes_an_rsa_pair_when_there_is_none(self):
         home = Path(tempfile.mkdtemp())
         (home / ".ssh").mkdir()

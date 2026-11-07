@@ -64,11 +64,16 @@ def image_name(part):
 DEFAULT_BACKUP = PRIVATE / "recovery" / "20261020-capture-prepared-20261021"
 
 
-def backup_table(backup):
-    """All partitions of a verified backup, each with its expected 'sha256' and raw 'image' path."""
+# What a slot B write is pinned to by content (usb_backup.py --only reads just these: about 130 MiB instead of the whole board).
+SLOT_B_SNAPSHOT = ("proinfo", "misc", "rootfs_a", "rootfs_b", "boot_para")
+
+
+def backup_table(backup, partial=False):
+    """All partitions of a verified backup, each with its expected 'sha256' and raw 'image' path.
+    partial=True (a snapshot, see usb_backup.py --only): partitions that were not read have 'sha256' None."""
     mtd = next(p for p in (backup / "mtd.txt", backup / "metadata" / "mtd.txt") if p.exists())
     sums = dict(reversed(l.split("  ", 1)) for l in (backup / "SHA256SUMS").read_text().splitlines())
-    return [{**p, "sha256": sums[f"images/{image_name(p)}"], "image": backup / "images" / image_name(p)}
+    return [{**p, "sha256": sums.get(f"images/{image_name(p)}") if partial else sums[f"images/{image_name(p)}"], "image": backup / "images" / image_name(p)}
             for p in parse_mtd(mtd.read_text())]
 
 

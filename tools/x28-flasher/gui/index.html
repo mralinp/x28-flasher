@@ -418,7 +418,7 @@ function viewBuild() {
 const WRITES = ["flash", "access"];
 const RISK = {
   flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit (if not, cancel and take one first with Backup)", "I will keep the modem powered and the USB cable connected until it finishes", "The tool will ask you to type an exact phrase and to power-cycle the modem; I will do both myself", "No UART log is kept during a flash; start the UART monitor separately to watch the boot", "Without a rehearsal the first write to slot A is the real one", "The flash checks only the slot it writes (read back and compared); it does not read the rest of the board before or after"]],
-  access: ["Root access", "Builds a key-only SSH candidate for slot B from your backup, rehearses it, then writes it. Only the overlay tail of rootfs_b changes.", ["The backup was taken just now, with the unit idle", "I will keep the modem powered and the USB cable connected until it finishes"]],
+  access: ["Root access", "Reads a fresh snapshot of slot B from the modem (about 130 MiB), builds a key-only SSH image from it, rehearses, then writes it. Only the overlay tail of rootfs_b changes.", ["The modem is idle and stays on stable power; the snapshot is read just before the write", "I will keep the modem powered and the USB cable connected until it finishes"]],
 };
 const leaf = (p) => p.split("/").filter(Boolean).pop();
 const imageLabel = (p, i) => { const m = leaf(p).match(/(\d{4})(\d\d)(\d\d)-(\d\d)(\d\d)(\d\d)$/); return m ? `Built ${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}${i === 0 ? "  ·  newest" : ""}` : leaf(p); };

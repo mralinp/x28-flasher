@@ -136,10 +136,17 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--loader", type=Path, required=True, help="download agent file (DA_BR.bin)")
     ap.add_argument("--chunk-mib", type=int, default=CHUNK >> 20, help="size of one READ-FLASH piece (the DA stops at 18 MiB, so keep it small)")
+    ap.add_argument("--only", help="comma-separated partition names: a snapshot of just these (SNAPSHOT.json marks it); only slot_b_entry.py accepts one")
     ap.add_argument("--no-verify", action="store_true", help="read each partition once (half the time, no cross-check)")
     args = ap.parse_args()
     layout_text = LAYOUT.read_text()
     parts = parse_mtd(layout_text)
+    if args.only:
+        names = args.only.split(",")
+        unknown = [n for n in names if n not in {p["name"] for p in parts}]
+        if unknown:
+            sys.exit(f"no such partition: {', '.join(unknown)}")
+        parts = [p for p in parts if p["name"] in names]
     print(f"{len(parts)} partitions, {sum(p['size'] for p in parts) / 2**20:.0f} MiB"
           f"{'' if args.no_verify else ', each read twice'}; writing to {args.out}")
     args.out.mkdir(parents=True, exist_ok=True)
@@ -159,7 +166,9 @@ def main():
         power_cycle_note()
         mtk.port.close()
     archive = seal(args.out.resolve(), sums, layout_text)
-    print(f"backup complete: {len(sums)} partitions, archive {archive} ({sha256_file(archive)[:12]})")
+    if args.only:
+        (args.out / "SNAPSHOT.json").write_text(json.dumps({"partitions": [p["name"] for p in parts]}))
+    print(f"{'snapshot' if args.only else 'backup'} complete: {len(sums)} partitions, archive {archive} ({sha256_file(archive)[:12]})")
     if (args.out / "BACKUP-NOTES.txt").exists():
         print("NOTE: " + (args.out / "BACKUP-NOTES.txt").read_text().splitlines()[-1] + "  (see BACKUP-NOTES.txt)")
     problems.report()

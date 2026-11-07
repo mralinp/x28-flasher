@@ -19,7 +19,7 @@ import time
 
 import slot_b
 import slot_session as session
-from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA, ensure_venv, loaded_code_matches, sha256_file
+from common import DEFAULT_BACKUP, PRIVATE, SLOT_B_SNAPSHOT, VENDOR_DA, ensure_venv, loaded_code_matches, sha256_file
 from restore_entry import DA_HASH, check_uart, check_unit, host_identity, open_da, save
 from slot_entry import load_prior, verified_backup
 
@@ -30,8 +30,19 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def snapshot_names(backup):
+    """The partitions a snapshot folder (usb_backup.py --only) holds, or () for a full backup."""
+    marker = backup / 'SNAPSHOT.json'
+    if not marker.is_file():
+        return ()
+    names = tuple(json.loads(marker.read_text())['partitions'])
+    if set(names) != set(SLOT_B_SNAPSHOT):
+        raise ValueError('this snapshot does not hold exactly ' + ', '.join(SLOT_B_SNAPSHOT))
+    return names
+
+
 def load_inputs(backup, loader, mode, candidate_dir):
-    table, by_name = verified_backup(backup, loader)
+    table, by_name = verified_backup(backup, loader, snapshot_names(backup))
     images = {n: Path(by_name[n]['image']).read_bytes() for n in ('misc', 'rootfs_a', 'rootfs_b', 'boot_para')}
     if any(digest(images[n]) != by_name[n]['sha256'] for n in images):
         raise ValueError('backup image changed after verification')
@@ -52,7 +63,7 @@ def load_inputs(backup, loader, mode, candidate_dir):
         if name == 'rootfs_b':  # the static head only; the tail is the target
             if p['offset'] != addr or size > p['size'] or digest(Path(p['image']).read_bytes()[:size]) != sha:
                 raise ValueError('prefix guard identity mismatch: ' + name)
-        elif (p['offset'], p['size']) != (addr, size) or (isinstance(sha, str) and p['sha256'] != sha):
+        elif (p['offset'], p['size']) != (addr, size) or (isinstance(sha, str) and p['sha256'] is not None and p['sha256'] != sha):
             raise ValueError('guard identity mismatch: ' + name)
     if (by_name['rootfs_b']['offset'] + session.ROOTFS_B_HEAD, by_name['rootfs_b']['size'] - session.ROOTFS_B_HEAD) != (spec.addr, spec.size):
         raise ValueError('target identity mismatch')

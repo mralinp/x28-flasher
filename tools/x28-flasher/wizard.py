@@ -408,11 +408,35 @@ def b_runs(probe, mode):
     return sorted((p.parent for p in probe.glob(f"slot-rootfs_b-{mode}-*/receipt.json")), key=lambda d: d.stat().st_mtime, reverse=True)
 
 
-def flash_b(fl, ui, cfg, mode, candidate):
+def slot_b_snapshot(fl, ui, cfg):
+    """A fresh read of the five partitions a slot B write is pinned to (about 130 MiB, each read twice), in place of a full backup.
+    The unit is not running while it is connected, so its overlay cannot change between this read and the write; the write tool
+    still compares the live partitions with it and stops on any difference. Returns the folder, or None."""
+    import images
+    from common import PRIVATE, SLOT_B_SNAPSHOT, VENDOR_DA
+    last = cfg.get("snapshot")
+    pick = ui.select("Slot B image to build from", [("Read slot B from the modem now (fresh, recommended)", "new")]
+                     + ([(f"Use the last snapshot: {Path(last).name}", "last")] if last and (Path(last) / "SNAPSHOT.json").is_file() else []))
+    if pick == "last":
+        return last
+    loader = ask_path(ui, cfg, "loader", "Vendor download agent file (DA_BR.bin)", VENDOR_DA, False)
+    out = PRIVATE / "snapshots" / f"slot-b-{images.stamp()}"
+    print("  " + paint("Read-only. Nothing is written to the router.", "dim"))
+    fl.power_off_countdown()
+    code = fl.run_tool("usb_backup.py", ["--out", str(out), "--loader", loader, "--only", ",".join(SLOT_B_SNAPSHOT)])
+    if code != 0:
+        print("  " + bad(f"The snapshot did not finish (exit {code}); nothing was changed."))
+        return None
+    cfg.set("snapshot", str(out))
+    print("  " + good(f"Snapshot saved in {out}"))
+    return str(out)
+
+
+def flash_b(fl, ui, cfg, mode, candidate, backup=None):
     """identical | write | restore of the rootfs_b overlay tail through slot_b_entry.py (every guard and the typed phrase stay)."""
     import argparse
     from common import DEFAULT_BACKUP, PRIVATE, VENDOR_DA
-    backup = ask_path(ui, cfg, "backup", "Folder with a FRESH verified backup of this unit (taken just now, unit idle)", DEFAULT_BACKUP, True)
+    backup = backup or ask_path(ui, cfg, "backup", "Folder with a FRESH verified backup of this unit (taken just now, unit idle)", DEFAULT_BACKUP, True)
     loader = ask_path(ui, cfg, "loader", "Vendor download agent file (DA_BR.bin)", VENDOR_DA, False)
     prior = resume = None
     wanted = {"write": ("identical", "Rehearsal to build on"), "restore": ("write", "Write run to undo")}.get(mode)
@@ -440,13 +464,16 @@ def access(fl, ui, cfg):
     import shutil
     import subprocess
     from common import DEFAULT_BACKUP, PRIVATE, REPO
+    snap = slot_b_snapshot(fl, ui, cfg)
+    if not snap:
+        return 1
+    backup = Path(snap)
     last = cfg.get("access_candidate")
-    fresh = ui.select("Candidate image", [("Build a new one from my backup and an SSH key", "new")] + ([(f"Use the last one: {Path(last).name}", "last")] if last and Path(last).is_dir() else []))
+    fresh = ui.select("Candidate image", [("Build a new one from the snapshot and an SSH key", "new")] + ([(f"Use the last one: {Path(last).name}", "last")] if last and Path(last).is_dir() else []))
     if fresh == "new":
         if not shutil.which("docker") or subprocess.call(["docker", "info"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL):
             print("  " + bad("Docker is not installed or not running: the candidate is built in a container."))
             return 1
-        backup = Path(ask_path(ui, cfg, "backup", "Folder with a FRESH verified backup of this unit", DEFAULT_BACKUP, True))
         rootfs_b = next(iter(sorted(backup.glob("images/*-rootfs_b.bin"))), None)
         if not rootfs_b:
             print("  " + bad(f"no rootfs_b image in {backup}/images"))
@@ -465,7 +492,7 @@ def access(fl, ui, cfg):
         print("  " + good(f"Candidate built: {out}"))
     mode = ui.select("Which run?", [("Rehearsal: rewrite the same bytes, read back, compare (identical)", "identical"),
                                     ("Write the candidate (needs a verified rehearsal)", "write")])
-    return flash_b(fl, ui, cfg, mode, last)
+    return flash_b(fl, ui, cfg, mode, last, backup=backup)
 
 
 def rescue(fl, ui, cfg):

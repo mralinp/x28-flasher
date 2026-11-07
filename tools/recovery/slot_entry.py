@@ -38,15 +38,20 @@ def digest(data):
     return hashlib.sha256(data).hexdigest()
 
 
-def verified_backup(backup, loader):
-    """The complete verified backup table and its by-name index; raises on any layout, integrity or DA mismatch."""
-    table = backup_table(backup)
+def verified_backup(backup, loader, snapshot=()):
+    """The complete verified backup table and its by-name index; raises on any layout, integrity or DA mismatch.
+
+    snapshot: names of the only partitions a snapshot holds (usb_backup.py --only). Those must be present and intact; the others
+    have 'sha256' None and no image, and the caller's guards still pin them against the live device."""
+    table = backup_table(backup, partial=bool(snapshot))
     layout = [{k: p[k] for k in ('index', 'name', 'size', 'erase_size', 'offset')} for p in table]
     if digest(json.dumps(layout, sort_keys=True).encode()) != LAYOUT_HASH:
         raise ValueError('backup layout is not this X28 layout')
     for p in table:
         image = Path(p['image'])
-        if image.stat().st_size != p['size'] or sha256_file(image) != p['sha256']:
+        if snapshot and p['name'] not in snapshot:
+            continue
+        if p['sha256'] is None or not image.is_file() or image.stat().st_size != p['size'] or sha256_file(image) != p['sha256']:
             raise ValueError('backup integrity failure: ' + p['name'])
     by_name = {p['name']: p for p in table}
     if sha256_file(loader) != DA_HASH:
