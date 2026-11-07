@@ -377,7 +377,7 @@ function viewBoot() {
     b.loading = true;
     fetch("/api/boot", { headers: { "X-Addr": addr(), "X-Pw": b.pw || "" } }).then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; }).then((r) => { b.info = r; }, (e) => { b.error = e.message; }).finally(() => { b.loading = false; if (S.screen === "boot") drawView(); });
   }
-  const on = b.info && b.info.boot === "b", ready = b.info && !b.working;
+  const sel = b.sel || (b.info && b.info.boot), on = sel === "b", ready = b.info && !b.working, changed = ready && sel !== b.info.boot;
   return `${head("Boot order", "Which slot the modem boots at its next power-up: A is the OpenWrt image, B is the vendor firmware. Needs the modem running and reachable over SSH; the USB connection is not used.")}
   <div class="box" style="padding:18px;display:grid;gap:16px;max-width:760px">
     <label class="f"><span class="lbl">Modem address (empty: try 192.168.70.1, then the vendor's 192.168.0.1:2222)</span><input type="text" id="boot-addr" value="${esc(addr())}" placeholder="192.168.70.1 or 192.168.1.1:22"></label>
@@ -385,10 +385,11 @@ function viewBoot() {
     ${b.error ? `<div class="warn">${esc(b.error)}</div>` : b.info ? "" : `<div class="mut">Asking the modem…</div>`}
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
       <span style="font-weight:${on ? 400 : 700}">Slot A · OpenWrt</span>
-      <button class="tog${on ? " on" : ""}" role="switch" aria-checked="${on}" data-act="boot-toggle" ${ready ? "" : "disabled"}><i></i></button>
+      <button class="tog${on ? " on" : ""}" role="switch" aria-checked="${on}" data-act="boot-pick" ${ready ? "" : "disabled"}><i></i></button>
       <span style="font-weight:${on ? 700 : 400}">Slot B · vendor firmware</span>
       <button class="btn" data-act="boot-reload" ${b.working ? "disabled" : ""} style="margin-left:auto">Read again</button>
     </div>
+    <div><button class="primary" data-act="boot-toggle" ${changed ? "" : "disabled"}>Change boot order</button></div>
     ${b.info ? `<div class="mut">Boots next: <b>slot ${b.info.boot.toUpperCase()}</b>. Running now: slot ${esc((b.info.running || "?").toUpperCase())}. A change applies at the next power-up; nothing reboots the modem for you.</div>` : ""}
     ${b.working ? `<div class="mut">Writing the boot record, one copy at a time…</div>` : ""}
     ${b.done ? `<div class="note">${esc(b.done)}</div>` : ""}
@@ -546,14 +547,15 @@ document.addEventListener("click", async (e) => {
   }
   if (a === "disconnect") { try { await api("/api/session", {}); } catch (er) { alert(er.message); } await refresh(); return drawView(); }
   if (a === "boot-reload") { try { localStorage.setItem("bootaddr", $("#boot-addr").value.trim()); } catch (e) { /* not saved */ } const pw = $("#boot-pw").value; S.boot = { pw }; return drawView(); }
-  if (a === "boot-toggle") return $("#risk").showModal();
+  if (a === "boot-pick") { S.boot.sel = (S.boot.sel || S.boot.info.boot) === "a" ? "b" : "a"; return drawView(); }
+  if (a === "boot-toggle") { S.boot.pw = $("#boot-pw").value; try { localStorage.setItem("bootaddr", $("#boot-addr").value.trim()); } catch (e) { /* not saved */ } return $("#risk").showModal(); }
   if (a === "boot-go") {
     $("#risk").close();
-    const b = S.boot, want = b.info.boot === "a" ? "b" : "a";
+    const b = S.boot, want = b.sel;
     b.working = true; b.done = null; drawView();
     try { b.info = await api("/api/boot", { slot: want, addr: addr(), pw: b.pw || "" }); b.error = null; b.done = `Slot ${want.toUpperCase()} will boot at the next power-up.`; }
     catch (er) { b.error = er.message; }
-    b.working = false; return drawView();
+    b.working = false; b.sel = null; return drawView();
   }
   if (a === "pw-next") return pwNext();
   if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
