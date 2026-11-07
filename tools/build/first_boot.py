@@ -265,6 +265,14 @@ def public_key(text):
     return fields[0]+' '+fields[1]+'\n'
 
 
+def allow_blank_password(init):
+    """Start dropbear with -B so root can log in over SSH with the image's empty password (zlt-x28-openwrt#361). The release ships the same change as
+    etc/uci-defaults/90-x28-dropbear-blank, but this assembly removes every uci-defaults script, so it is made here, in the init script itself."""
+    old='command "$PROG" -F'
+    if init.count(old)!=1:raise ValueError('unexpected dropbear init script: cannot add -B')
+    return init.replace(old,'command "$PROG" -B -F')
+
+
 def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
     key=public_key(key) if key else None  # no key: the flasher builds an image without one
     if output.exists():raise FileExistsError(output)
@@ -507,6 +515,7 @@ config interface 'wan'
  option mdns '0'
 """)
     if key:put('etc/dropbear/authorized_keys',key,0o600)
+    put('etc/init.d/dropbear',allow_blank_password(tree['etc/init.d/dropbear'][1].decode()),tree['etc/init.d/dropbear'][0].mode)
     # Like stock OpenWrt root starts with an empty password so LuCI can log in and ask for one; SSH takes keys or the root password; dropbear never accepts an empty one, so password login starts once the owner sets it (LuCI or passwd).
     rows=tree['etc/shadow'][1].decode().splitlines();found=False;locked=[]
     for row in rows:
