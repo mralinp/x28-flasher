@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 from common import DEFAULT_BACKUP, VENDOR_DA, Problems, ensure_venv, backup_partition, probe_dir, sha256_file
@@ -101,6 +102,27 @@ def read_partition(da, name):
     return bytes(data) if data else None
 
 
+CHUNK = 4 << 20  # one READ-FLASH piece: a long single read ends in USB pipe errors on this download agent (the backup reads in the same size)
+
+
+def read_in_pieces(mtk, start, size):
+    """Read size bytes at start in CHUNK pieces. Returns what was read: all of it, or the whole pieces before the first one that failed."""
+    data = bytearray()
+    piece = Path(tempfile.mkdtemp(prefix="x28-read-")) / "piece.bin"
+    for off in range(0, size, CHUNK):
+        n = min(CHUNK, size - off)
+        piece.unlink(missing_ok=True)
+        ok = mtk.daloader.readflash(addr=start + off, length=n, filename=str(piece), parttype=None, display=True)
+        got = piece.stat().st_size if piece.exists() else 0
+        if ok is not True or got != n:
+            print(f"\npiece at +{off:#x} failed ({got:#x} of {n:#x} bytes): keeping the {len(data):#x} bytes read before it", flush=True)
+            break
+        data += piece.read_bytes()
+        print(f"  {len(data) >> 20} of {size >> 20} MiB", flush=True)
+    piece.unlink(missing_ok=True)
+    return bytes(data)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("partition", nargs="?", default="lk_b")
@@ -118,24 +140,26 @@ def main():
     mtk = connect(out, loader)
     da = mtk.daloader.da
     try:
-        # READ-PARTITION goes first: after a refused command this DA stops answering
-        data = read_partition(da, args.partition)
         table, _ = da.read_partition_table()
+        rows = []
         if table:
             text = table.decode(errors="replace") if isinstance(table, bytes) else table
             (out / "da-partition-table.xml").write_text(text)
             rows = re.findall(r"<name>(.*?)</name><start>(.*?)</start><size>(.*?)</size>", text)
             print(f"READ-PARTITION-TABLE: {len(rows)} entries (saved da-partition-table.xml)")
-            for name, start, size in rows:
-                print(f"  {name:<18} start {start:>12} size {size}")
         else:
             print("READ-PARTITION-TABLE: no data")
+        row = next((r for r in rows if r[0] == args.partition), None)
+        if row is None:
+            sys.exit(f"no partition {args.partition!r} on the board")
+        size = int(row[2], 16)
+        data = read_in_pieces(mtk, int(row[1], 16), size)
     finally:
         power_cycle_note()
         mtk.port.close()
         problems.report()
 
-    if data is None:
+    if not data:
         sys.exit(1)
     path = out / f"{args.partition}-usb-by-name.bin"
     path.write_bytes(data)
@@ -146,6 +170,9 @@ def main():
         keep = args.save_to / f"{args.partition}.bin"
         keep.write_bytes(data)
         print(f"saved    {keep}")
+    if len(data) != size:
+        print(f"PARTIAL  {len(data):#x} of {size:#x} bytes: not compared")
+        sys.exit(2)
     if args.no_compare:
         return
     print(f"backup   {part['size']:#x} bytes, sha256 {expected}")
