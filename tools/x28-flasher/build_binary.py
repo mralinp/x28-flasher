@@ -100,6 +100,8 @@ def main():
            "--collect-data", "mtkclient", "--collect-binaries", "usb"]
     for pkg_name in ("mtkclient", "usb", "serial", "Crypto", "Cryptodome", "colorama", "questionary", "prompt_toolkit"):
         cmd += ["--collect-submodules", pkg_name]
+    for name in ("session_host",):  # only imported by name at run time (x28_flasher session), so PyInstaller's scan would miss it
+        cmd += ["--hidden-import", name]
     for name in stdlib_imports([f for f, d in data if f.suffix == ".py" and d in ("recovery", "build", "tools/build", "tools/firmware")]):
         cmd += ["--hidden-import", name]
     for src, dest in data:
