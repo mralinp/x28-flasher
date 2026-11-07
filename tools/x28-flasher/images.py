@@ -2,6 +2,7 @@
 import hashlib
 import io
 import json
+import re
 import tarfile
 import time
 import urllib.request
@@ -31,12 +32,21 @@ def latest_release(fetch=get, repo=REPO):
     return None
 
 
+UNSUPPORTED_UP_TO = (0, 53, 3)  # releases up to and including v0.53.3 are not supported; the next version is the first one
+
+
+def supported(tag):
+    """vX.Y.Z newer than UNSUPPORTED_UP_TO; any other tag name (feed-2, kmods-...) is not an image release."""
+    m = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", tag)
+    return bool(m) and tuple(map(int, m.groups())) > UNSUPPORTED_UP_TO
+
+
 def releases(fetch=get, repo=REPO):
     """Releases that carry the userspace tarball, newest first: [{tag, date, beta}] (beta: GitHub marks it a pre-release)."""
     out = []
     for rel in json.loads(fetch(f"https://api.github.com/repos/{repo}/releases?per_page=30")):
         names = [a["name"] for a in rel.get("assets", [])]
-        if any(n.startswith("x28-userspace-") and n.endswith("-rootfs.tar.gz") for n in names):
+        if supported(rel["tag_name"]) and any(n.startswith("x28-userspace-") and n.endswith("-rootfs.tar.gz") for n in names):
             out.append({"tag": rel["tag_name"], "date": (rel.get("published_at") or "")[:10], "beta": bool(rel.get("prerelease"))})
     return out
 

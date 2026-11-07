@@ -149,11 +149,11 @@ if __name__ == "__main__":
 
 class ReleaseListTests(unittest.TestCase):
     def test_lists_only_releases_with_the_userspace_tarball(self):
-        rels = [{"tag_name": "v2", "published_at": "2026-11-06T01:00:00Z", "prerelease": True, "assets": [{"name": "x28-userspace-v2-x-rootfs.tar.gz"}]},
+        rels = [{"tag_name": "v0.60.0", "published_at": "2026-11-06T01:00:00Z", "prerelease": True, "assets": [{"name": "x28-userspace-v0.60.0-x-rootfs.tar.gz"}]},
                 {"tag_name": "feed-2", "assets": [{"name": "ipset.ipk"}]},
-                {"tag_name": "v1", "published_at": "2026-11-05T01:00:00Z", "assets": [{"name": "x28-userspace-v1-x-rootfs.tar.gz"}]}]
+                {"tag_name": "v0.59.0", "published_at": "2026-11-05T01:00:00Z", "assets": [{"name": "x28-userspace-v0.59.0-x-rootfs.tar.gz"}]}]
         got = images.releases(fetch=lambda url: json.dumps(rels).encode())
-        self.assertEqual(got, [{"tag": "v2", "date": "2026-11-06", "beta": True}, {"tag": "v1", "date": "2026-11-05", "beta": False}])
+        self.assertEqual(got, [{"tag": "v0.60.0", "date": "2026-11-06", "beta": True}, {"tag": "v0.59.0", "date": "2026-11-05", "beta": False}])
 
 
 class FrozenBuildTests(unittest.TestCase):
@@ -164,3 +164,12 @@ class FrozenBuildTests(unittest.TestCase):
         self.assertEqual(cmds[1][:3], ["/app/x28-flasher", "--run-script", "/repo/tools/build/first_boot.py"])
         self.assertNotIn("--public-key", cmds[1])
         self.assertNotIn("--kmods", cmds[1])
+
+
+class SupportedReleaseTests(unittest.TestCase):
+    def test_versions_up_to_0_53_3_are_dropped_and_the_next_one_is_the_first(self):
+        for tag, ok in (("v0.53.3", False), ("v0.53.2", False), ("v0.52.0", False), ("v0.30.3", False), ("v0.53.4", True), ("v0.54.0", True), ("v1.0.0", True),
+                        ("feed-2", False), ("kmods-4.19.205", False)):
+            self.assertEqual(images.supported(tag), ok, tag)
+        rels = [{"tag_name": t, "assets": [{"name": f"x28-userspace-{t}-x-rootfs.tar.gz"}]} for t in ("v0.54.0", "v0.53.1")]
+        self.assertEqual([r["tag"] for r in images.releases(fetch=lambda url: json.dumps(rels).encode())], ["v0.54.0"])
