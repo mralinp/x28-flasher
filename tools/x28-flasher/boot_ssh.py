@@ -25,12 +25,12 @@ class BootError(Exception):
     pass
 
 
-def ssh(slot, cmd, stdin=None, timeout=60):
-    host, port = HOSTS[slot]
+def ssh(target, cmd, stdin=None, timeout=60, pw=""):
+    host, port = target
     askpass = Path(tempfile.mkdtemp()) / "askpass"
-    askpass.write_text("#!/bin/sh\necho ''\n")  # the OpenWrt image has an empty root password
+    askpass.write_text('#!/bin/sh\nprintf "%s\\n" "$X28_PW"\n')  # the OpenWrt image has an empty root password; a key is tried first
     askpass.chmod(stat.S_IRWXU)
-    env = {**os.environ, "SSH_ASKPASS": str(askpass), "SSH_ASKPASS_REQUIRE": "force", "DISPLAY": ":0"}
+    env = {**os.environ, "SSH_ASKPASS": str(askpass), "SSH_ASKPASS_REQUIRE": "force", "DISPLAY": ":0", "X28_PW": pw}
     argv = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR",
             "-o", "ConnectTimeout=5", "-o", "NumberOfPasswordPrompts=1", "-o", "PreferredAuthentications=publickey,password,keyboard-interactive"]
     for key in (Path.home() / ".ssh" / "router",):
@@ -70,32 +70,44 @@ def plan(rec, slot):
     return bytes([a]) + bytes.fromhex(rec[2:8]) + bytes([b])
 
 
-def state():
-    """Ask the unit on the address of the slot it runs: {"host", "running", "boot", "record"}."""
+def targets(addr=""):
+    """The address typed on the page ("host" or "host:port"), else where the unit answers on slot A, then on slot B."""
+    addr = (addr or "").strip()
+    if not addr:
+        return list(HOSTS.values())
+    host, _, port = addr.partition(":")
+    if not host or not (port.isdigit() or not port) or any(c in host for c in " ;'\"$`"):
+        raise BootError("the address must look like 192.168.1.1 or 192.168.1.1:2222")
+    return [(host, int(port or 22))]
+
+
+def state(addr="", pw=""):
+    """Ask the unit: {"via", "running", "boot", "record"}; `via` is the (host, port) that answered."""
     errors = []
-    for slot in HOSTS:
+    for slot in targets(addr):
         try:
-            r = ssh(slot, READ)
+            r = ssh(slot, READ, pw=pw)
         except BootError as err:
             errors.append(str(err))
             continue
         if r.returncode == 0 and r.stdout.strip():
             running, recs = parse(r.stdout.decode(errors="replace"))
             return {"via": slot, "running": running, "boot": boot_slot(recs[0]), "record": recs[0]}
-        errors.append(f"{HOSTS[slot][0]}: " + (r.stderr.decode(errors="replace").strip().splitlines() or ["no answer"])[-1])
-    raise BootError("Could not reach the modem over SSH. " + " | ".join(errors))
+        errors.append(f"{slot[0]}: " + (r.stderr.decode(errors="replace").strip().splitlines() or ["no answer"])[-1])
+    hint = " Enter the modem's root password above, or add your SSH key to it." if any("Permission denied" in e for e in errors) else ""
+    raise BootError("Could not reach the modem over SSH. " + " | ".join(errors) + hint)
 
 
-def set_slot(slot):
+def set_slot(slot, addr="", pw=""):
     """Make `slot` the one that boots at the next power-up. Returns the new state."""
     if slot not in PRIO:
         raise BootError("choose slot a or b")
-    cur = state()
+    cur = state(addr, pw)
     if cur["boot"] == slot:
         return cur
     via = cur["via"]
     BACKUPS.mkdir(parents=True, exist_ok=True)
-    r = ssh(via, FIND + "cat /dev/${M}ro", timeout=120)
+    r = ssh(via, FIND + "cat /dev/${M}ro", timeout=120, pw=pw)
     if r.returncode or len(r.stdout) != 0x100000:
         raise BootError("could not save a copy of the boot partition first; nothing was changed")
     (BACKUPS / time.strftime("misc-%Y%m%d-%H%M%S.bin")).write_bytes(r.stdout)
@@ -105,8 +117,8 @@ def set_slot(slot):
         off = REC + 262144 * k
         esc = "".join(f"\\x{c:02x}" for c in want)
         out = ssh(via, FIND + f"printf '{esc}' | dd-nand of=/dev/$M seek={off} bs=1 count=5 >/dev/null 2>&1; "
-                  f"dd if=/dev/${{M}}ro bs=1 skip={off} count=8 2>/dev/null | hexdump -v -e '1/1 \"%02x\"'", timeout=120)
+                  f"dd if=/dev/${{M}}ro bs=1 skip={off} count=8 2>/dev/null | hexdump -v -e '1/1 \"%02x\"'", timeout=120, pw=pw)
         if out.stdout.decode().strip() != new:
             raise BootError(f"copy {k} read back {out.stdout.decode().strip()!r}, expected {new!r}. Stopped; "
                             f"the copies before it are changed. Run it again, or restore the copy saved in {BACKUPS}.")
-    return state()
+    return state(addr, pw)

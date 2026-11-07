@@ -369,15 +369,18 @@ function viewRead() {
   </div>
   ${S.job && S.job.kind === "read" ? consoleHtml() : ""}`;
 }
+const addr = () => { try { return localStorage.getItem("bootaddr") || ""; } catch (e) { return ""; } };
 function viewBoot() {
   const b = S.boot || (S.boot = { loading: false });
   if (!b.info && !b.error && !b.loading) {
     b.loading = true;
-    api("/api/boot").then((r) => { b.info = r; }, (e) => { b.error = e.message; }).finally(() => { b.loading = false; if (S.screen === "boot") drawView(); });
+    fetch("/api/boot", { headers: { "X-Addr": addr(), "X-Pw": b.pw || "" } }).then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error); return j; }).then((r) => { b.info = r; }, (e) => { b.error = e.message; }).finally(() => { b.loading = false; if (S.screen === "boot") drawView(); });
   }
   const on = b.info && b.info.boot === "b", ready = b.info && !b.working;
   return `${head("Boot order", "Which slot the modem boots at its next power-up: A is the OpenWrt image, B is the vendor firmware. Needs the modem running and reachable over SSH; the USB connection is not used.")}
   <div class="box" style="padding:18px;display:grid;gap:16px;max-width:760px">
+    <label class="f"><span class="lbl">Modem address (empty: try 192.168.70.1, then the vendor's 192.168.0.1:2222)</span><input type="text" id="boot-addr" value="${esc(addr())}" placeholder="192.168.70.1 or 192.168.1.1:22"></label>
+    <label class="f"><span class="lbl">Root password (only if the modem has one and no key is installed; not saved)</span><input type="password" id="boot-pw" value="${esc(b.pw || "")}" autocomplete="off"></label>
     ${b.error ? `<div class="warn">${esc(b.error)}</div>` : b.info ? "" : `<div class="mut">Asking the modem…</div>`}
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
       <span style="font-weight:${on ? 400 : 700}">Slot A · OpenWrt</span>
@@ -541,13 +544,13 @@ document.addEventListener("click", async (e) => {
     return;
   }
   if (a === "disconnect") { try { await api("/api/session", {}); } catch (er) { alert(er.message); } await refresh(); return drawView(); }
-  if (a === "boot-reload") { S.boot = null; return drawView(); }
+  if (a === "boot-reload") { try { localStorage.setItem("bootaddr", $("#boot-addr").value.trim()); } catch (e) { /* not saved */ } const pw = $("#boot-pw").value; S.boot = { pw }; return drawView(); }
   if (a === "boot-toggle") return $("#risk").showModal();
   if (a === "boot-go") {
     $("#risk").close();
     const b = S.boot, want = b.info.boot === "a" ? "b" : "a";
     b.working = true; b.done = null; drawView();
-    try { b.info = await api("/api/boot", { slot: want }); b.error = null; b.done = `Slot ${want.toUpperCase()} will boot at the next power-up.`; }
+    try { b.info = await api("/api/boot", { slot: want, addr: addr(), pw: b.pw || "" }); b.error = null; b.done = `Slot ${want.toUpperCase()} will boot at the next power-up.`; }
     catch (er) { b.error = er.message; }
     b.working = false; return drawView();
   }

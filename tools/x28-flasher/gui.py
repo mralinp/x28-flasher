@@ -497,7 +497,7 @@ def make_handler(app):
             if url.path == "/api/boot":
                 import boot_ssh
                 try:
-                    return self.reply(200, boot_ssh.state())
+                    return self.reply(200, boot_ssh.state(self.headers.get("X-Addr", ""), self.headers.get("X-Pw", "")))
                 except boot_ssh.BootError as err:
                     return self.reply(409, {"error": str(err)})
             if url.path == "/api/uart/tail":
@@ -566,7 +566,7 @@ def make_handler(app):
                 if path == ["api", "boot"]:  # over SSH on the running modem: no USB session needed
                     import boot_ssh
                     try:
-                        return self.reply(200, boot_ssh.set_slot(str(data.get("slot"))))
+                        return self.reply(200, boot_ssh.set_slot(str(data.get("slot")), str(data.get("addr") or ""), str(data.get("pw") or "")))
                     except boot_ssh.BootError as err:
                         raise RuntimeError(str(err))
                 if path == ["api", "releases"]:
