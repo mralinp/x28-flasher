@@ -103,7 +103,7 @@ class Job:
 
 
 MARK = "\x1e"  # session_host's marker lines start with it
-SESSION_ACTIONS = ("identify", "backup", "read", "test", "flash", "access", "rescue")  # the steps that talk to the modem
+SESSION_ACTIONS = ("identify", "backup", "read", "test", "flash", "access", "rescue", "bootorder")  # the steps that talk to the modem
 
 
 class RunJob(Job):
@@ -313,6 +313,13 @@ def build_command(fl, action, params, loader):
         else:
             argv.append("--no-compare")
         return script_cmd(fl, fl.RECOVERY / "read_by_name.py", argv)
+    if action == "bootorder":  # which slot the preloader boots (recovery/boot_order.py); showing it writes nothing
+        slot = str(params.get("slot") or "")
+        if slot not in ("show", "a", "b", "undo"):
+            raise ValueError("choose what to do with the boot order")
+        if slot != "show" and params.get("accept") is not True:
+            raise ValueError("accept the risk first: this writes the board")
+        return script_cmd(fl, fl.RECOVERY / "boot_order.py", [slot, "--loader", loader])
     if action in WRITE_ACTIONS and params.get("accept") is not True:
         raise ValueError("accept the risk first: this writes the board")
     if action in WIZARD_ACTIONS + WRITE_ACTIONS:

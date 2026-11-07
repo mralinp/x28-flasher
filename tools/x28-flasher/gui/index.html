@@ -95,6 +95,7 @@ const ICON = {
   read: "M5 4h11l3 3v13H5zM8 4v5h7V4M8 20v-6h8v6",
   test: "M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3",
   uart: "M3 12h4l3-8 4 16 3-8h4",
+  boot: "M5 6h14M5 12h14M5 18h14M9 4v4M15 10v4M8 16v4",
   rescue: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z",
   access: "M4 5h16v14H4zM7 10l3 2-3 2M12 15h5",
 };
@@ -106,6 +107,7 @@ const MENU = [
   ["read", "Read & verify", "Read one partition from the board and compare it with your backup. Writes nothing."],
   ["test", "Self-test", "Check setup, the patched library and a real read. Writes nothing."],
   ["uart", "UART monitor", "Capture the serial console to a log. A flash needs it unless you have no adapter."],
+  ["boot", "Boot order", "Choose which slot the modem boots: OpenWrt (slot A) or the vendor firmware (slot B). Changes two bytes; has an undo."],
   ["access", "Stock SSH access", "Key-only SSH on the stock firmware (slot B). Builds the image from your backup, rehearses, then writes. No Telnet."],
   ["rescue", "Rescue (slot B)", "Undo a stock SSH write: put the original slot B tail back from your backup."],
 ];
@@ -122,7 +124,7 @@ const busy = () => !!(S.job && S.job.code === null);
 /* The screen that shows a running job: the job's own view (Connect is "wizard"; Setup output sits on the home screen). */
 const jobScreen = (kind) => kind === "identify" ? "wizard" : kind === "setup" || kind === "libusb" ? "home" : kind;
 /* Actions that start something: refused while a job runs (the server holds one job at a time). */
-const STARTS = ["connect", "backup", "run", "write", "confirm-write", "setup", "libusb", "pw-next", "build", "read-go"];  // UART is not a job: it runs alongside one
+const STARTS = ["connect", "backup", "run", "write", "confirm-write", "setup", "libusb", "pw-next", "build", "read-go", "boot-show", "boot-ask", "boot-go"];  // UART is not a job: it runs alongside one
 
 /* ---------- sidebar ---------- */
 function mb(n) { return n ? Math.round(n / 1048576) + " MiB" : "?"; }
@@ -364,6 +366,28 @@ function viewRead() {
   </div>
   ${S.job && S.job.kind === "read" ? consoleHtml() : ""}`;
 }
+function viewBoot() {
+  if (S.pw && S.pw.kind === "bootorder") return powerWizard();
+  const [title, , items] = RISK.bootorder, connected = S.st.session && S.st.session.state === "connected";
+  const started = S.job && S.job.kind === "bootorder";
+  return `${head("Boot order", "Which slot the modem boots at power-up: slot A is the OpenWrt image, slot B is the vendor firmware. This changes two bytes of the boot record and nothing else. Writes nothing until you confirm.")}
+  <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
+    ${connected ? `<div class="mut">✓ Connected: no power cycle needed.</div>` : `<div class="mut">The first action does the power steps once and keeps the connection open.</div>`}
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn" data-act="boot-show" ${busy() ? "disabled" : ""}>Read the boot order</button>
+      <button class="primary" data-act="boot-ask" data-slot="b" ${busy() ? "disabled" : ""}>Boot slot B (vendor firmware)</button>
+      <button class="primary" data-act="boot-ask" data-slot="a" ${busy() ? "disabled" : ""}>Boot slot A (OpenWrt)</button>
+      <button class="btn" data-act="boot-ask" data-slot="undo" ${busy() ? "disabled" : ""}>Undo the last change</button>
+    </div>
+    <div class="mut" style="font-size:12.5px">After a change, disconnect and power-cycle the modem: it applies at the next boot.</div>
+  </div>
+  <dialog id="risk" style="max-width:560px;border:1px solid var(--line);border-radius:14px;background:var(--card);color:inherit;padding:24px">
+    <h3 style="margin:0 0 12px">Change the boot order</h3>
+    <div style="display:grid;gap:8px;line-height:1.5">${items.map((t) => `<div>• ${esc(t)}</div>`).join("")}<div>• A power or USB loss during the write can damage the boot record; the way back is a USB restore from your backup.</div></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:20px"><button class="btn" data-act="risk-cancel" style="height:44px;padding:0 22px">Cancel</button><button class="primary" id="boot-go" data-act="boot-go">I accept the risk, start</button></div>
+  </dialog>
+  ${started ? consoleHtml() : ""}`;
+}
 function viewBuild() {
   const pick = S.releases ? Math.max(0, S.releases.findIndex((r) => !r.beta)) : 0;  // the newest stable release, else the newest
   if (!S.releases && !S.relError) api("/api/releases", {}).then((r) => { S.releases = r.releases; if (S.screen === "build") drawView(); }, (e) => { S.relError = "Could not load the release list: " + e.message; if (S.screen === "build") drawView(); });
@@ -379,10 +403,11 @@ function viewBuild() {
   </div>
   ${S.job && S.job.kind === "build" ? consoleHtml() : ""}`;
 }
-const WRITES = ["flash", "access", "rescue"];
+const WRITES = ["flash", "access", "rescue", "bootorder"];
 const RISK = {
   flash: ["Flash OpenWrt", "A rehearsal first (write the image, read it back, compare), then the real write to slot A.", ["I have a finished, verified backup of this unit (if not, cancel and take one first with Backup)", "I will keep the modem powered and the USB cable connected until it finishes", "The tool will ask you to type an exact phrase and to power-cycle the modem; I will do both myself", "No UART log is kept during a flash; start the UART monitor separately to watch the boot", "Without a rehearsal the first write to slot A is the real one", "The flash checks only the slot it writes (read back and compared); it does not read the rest of the board before or after"]],
   access: ["Stock SSH access", "Builds a key-only SSH candidate for slot B from your backup, rehearses it, then writes it. Only the overlay tail of rootfs_b changes.", ["The backup was taken just now, with the unit idle", "I will keep the modem powered and the USB cable connected until it finishes"]],
+  bootorder: ["Boot order", "", ["Slot B is your vendor firmware and slot A is the OpenWrt image: after this change the modem boots the other one at its next power-up", "I will keep the modem powered and the USB cable connected until it finishes", "The tool will ask you to type an exact phrase; I will type it myself", "The USB download mode still works whichever slot boots, and the undo puts the old boot order back exactly"]],
   rescue: ["Rescue (slot B)", "Restores the original slot B overlay tail from your backup after a write. Each try is a manual run.", ["I have the backup this unit was written from", "I will keep the modem powered and the USB cable connected until it finishes"]],
 };
 const leaf = (p) => p.split("/").filter(Boolean).pop();
@@ -453,7 +478,7 @@ function viewWizard() { return S.pw ? powerWizard() : `${head("Connect device", 
 
 function drawView() {
   const v = { home: viewHome, wizard: viewWizard, backup: viewBackup, uart: viewUart,
-    flash: () => viewWrite("flash"), access: () => viewWrite("access"), rescue: () => viewWrite("rescue"),
+    boot: viewBoot, flash: () => viewWrite("flash"), access: () => viewWrite("access"), rescue: () => viewWrite("rescue"),
     build: viewBuild,
     read: viewRead,
     test: () => wizardRunner("Self-test", "Serial ports, backup, download agent and the patched library. Optionally reads lk_b and compares it. Read-only.", "test", "Run self-test") }[S.screen];
@@ -522,6 +547,9 @@ document.addEventListener("click", async (e) => {
     } catch (er) { return alert(er.message); }
     S.job = null; if (await start("build", params)) drawView(); return;
   }
+  if (a === "boot-show") return openPower("bootorder", { slot: "show" });
+  if (a === "boot-ask") { $("#boot-go").dataset.slot = t.dataset.slot; return $("#risk").showModal(); }
+  if (a === "boot-go") { $("#risk").close(); return openPower("bootorder", { slot: t.dataset.slot, accept: true }); }
   if (a === "read-go") {
     const part = document.querySelector('input[name="rd-part"]:checked')?.value;
     if (!part) return alert("Choose a partition.");

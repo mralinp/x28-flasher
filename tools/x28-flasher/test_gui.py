@@ -101,6 +101,16 @@ class CommandTests(unittest.TestCase):
         for action in ("access", "rescue"):
             self.assertEqual(gui.build_command(FakeFl, action, {"accept": True}, "DA")[-2:], ["run", action])
 
+    def test_boot_order_needs_acceptance_for_a_change_but_not_to_look(self):
+        show = gui.build_command(FakeFl, "bootorder", {"slot": "show"}, "DA")
+        self.assertEqual(show[show.index("boot_order.py") if "boot_order.py" in show else 1:][1], "show")
+        for slot in ("a", "b", "undo"):
+            with self.assertRaisesRegex(ValueError, "accept"):
+                gui.build_command(FakeFl, "bootorder", {"slot": slot}, "DA")
+            self.assertIn(slot, gui.build_command(FakeFl, "bootorder", {"slot": slot, "accept": True}, "DA"))
+        with self.assertRaisesRegex(ValueError, "choose"):
+            gui.build_command(FakeFl, "bootorder", {"slot": "c", "accept": True}, "DA")
+
     def test_read_form_builds_the_tool_command_and_checks_the_name_and_backup(self):
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
