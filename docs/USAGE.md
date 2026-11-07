@@ -28,21 +28,24 @@ downloaded and SHA-256 checked; the image is assembled locally from your backup,
 ## Flash OpenWrt
 
 Only slot A is written; slot B (stock) is locked. The flow is: dry run, tick the risk checklist, type the tool's phrase,
-write, then Read & verify. Booting slot A needs the boot order changed, which needs SSH on the stock system
-(see below). The packaged app refuses this step.
+write, then Read & verify. Booting slot A needs the boot order changed, which is the Boot order page. The packaged app refuses this step.
 
-## Stock SSH access
+## Root access
 
-Sets up key-only SSH on the stock firmware so the boot order can be changed. Telnet is deliberately not offered.
+Once, on a fresh unit, right after the Backup. It reads a snapshot of slot B from the modem (proinfo, misc, rootfs_a, rootfs_b and
+boot_para, about 130 MiB; rootfs_a is read so the write can prove slot A stays untouched), builds a key-only SSH image from it, then
+rehearses and writes only slot B's overlay tail. You choose an RSA key from `~/.ssh`, or a new pair (`~/.ssh/x28_rsa`) is made.
+SSH then answers on port 22 (and 2222). Telnet is deliberately not offered.
 
-## Rescue (slot B)
+## Boot order
 
-Restores the stock slot from your backup. Use it when slot A will not boot and the unit does not fall back.
+A switch between slot A (OpenWrt) and slot B (stock): flip it, press **Change boot order** and accept the risk. It works over SSH on the
+running modem (address and root password are optional fields), saves a copy of the boot partition first and changes two bytes in each of its
+four copies. The change applies at the next power-up; nothing reboots the modem for you.
 
-## UART monitor and Self-test
+## UART monitor
 
-**UART monitor** keeps a capture running into a log. **Self-test** checks the tools, the loader identity and the patched
-mtkclient. Both are read-only.
+**UART monitor** keeps a capture running into a log. It is read-only.
 
 ## Terminal use
 
