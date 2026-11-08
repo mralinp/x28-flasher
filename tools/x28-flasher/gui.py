@@ -346,8 +346,8 @@ class App:
         return wizard.Config(PRIVATE / "x28-flasher.json")
 
     def loader_path(self, params=None):
-        from common import VENDOR_DA
-        return str((params or {}).get("loader") or self.config().get("loader") or VENDOR_DA)
+        import da_file
+        return str((params or {}).get("loader") or da_file.pick(self.config().get("loader")))
 
     def start_job(self, action, params):
         with self.lock:

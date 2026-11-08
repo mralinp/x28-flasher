@@ -62,8 +62,7 @@ python3 tools/x28-flasher/x28_flasher.py wizard   # the same steps as a terminal
 Only this computer's browser can reach the page; its **Quit** button stops the flasher. Log:
 `~/Library/Logs/x28-flasher.log`.
 
-You also need the Quectel download agent (`DA_BR.bin`). It is not in this repo; choose it in the page, or bake it into
-your own build (see [Run and build](#run-and-build-the-commands)).
+The Quectel download agent (`DA_BR.bin`) is in this repo (`tools/x28-flasher/assets/`, SHA-256 checked) and every build bundles it, so there is nothing to choose. The page's loader field only overrides it; a saved path that no longer exists is ignored.
 
 ## The steps
 
@@ -84,7 +83,7 @@ Details, prompts and recovery are in **[the manual](docs/USAGE.md)**: what each 
 - Receipts bind each step to the hashes of the recovery tools, so those files must not change mid-chain.
 - The UART capture must have been updated within 60 s, or the guarded tools refuse.
 - Nothing in the front end writes flash itself; it only hands over to `tools/recovery/`.
-- The vendor download agent and any firmware dumps are **never committed** (`.gitignore`) and never built by CI.
+- Firmware dumps are **never committed** (`.gitignore`). The vendor download agent is the one exception: it is a fixed, hash-checked file kept in this private repository, and every build includes it, so do not make this repository or its releases public.
 - Telnet is not offered; `stock_access.py` sets up key-only SSH.
 
 ## Run and build: the commands
@@ -127,11 +126,11 @@ bh/venv/bin/python tools/x28-flasher/build_binary.py --home bh --out dist
 python3 tools/x28-flasher/build_app.py
 ```
 
-For your own use, put the download agent inside (checked against its expected SHA-256; it is Quectel's file, so do not share the result), and name a version
-if you want one shown in the page (a local build says `dev`; CI passes the release it is about to tag):
+The download agent from `tools/x28-flasher/assets/DA_BR.bin` is bundled automatically (checked against its expected SHA-256; it is Quectel's file, so do not share a build). `--loader /other/DA_BR.bin` uses another copy.
+Name a version if you want one shown in the page (a local build says `dev`; CI passes the release it is about to tag):
 
 ```bash
-bh/venv/bin/python tools/x28-flasher/build_binary.py --home bh --out dist --loader /path/to/DA_BR.bin --version 0.1.0
+bh/venv/bin/python tools/x28-flasher/build_binary.py --home bh --out dist --version 0.1.0
 python3 tools/x28-flasher/build_app.py
 ```
 

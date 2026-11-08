@@ -25,6 +25,7 @@ FROZEN = getattr(sys, "frozen", False)
 RECOVERY = (Path(sys._MEIPASS) if FROZEN else Path(__file__).resolve().parents[1]) / "recovery"
 sys.path.insert(0, str(RECOVERY))
 from common import MTK_HOME, PRIVATE, VENDOR_DA, ensure_venv  # noqa: E402
+import da_file  # noqa: E402
 
 VENV_PY = MTK_HOME / "venv" / "bin" / "python"
 BARE = sys.argv[1:] in ([], ["gui"])
@@ -189,7 +190,7 @@ def cmd_flash_b(args, ui=None):
 
 def cmd_flash(args, ui=None, tool="slot_entry.py", build_cmd=None):
     # Frozen builds write too: the tools check that the compiled mtkclient library equals its bundled, pinned copy (common.loaded_code_matches, #272)
-    loader = Path(args.loader) if args.loader else VENDOR_DA
+    loader = Path(args.loader) if args.loader else da_file.default()
     if not loader.is_file():
         sys.exit(f"download agent missing: {loader}")
     ui = ui or Ui()

@@ -151,7 +151,8 @@ def check_setup(fl, ui, cfg):
         print("  " + good(f"backup: {backup} ({len(backup_table(backup))} partitions)"))
     except Exception:
         print("  " + bad(f"backup not found at {backup}"))
-    loader = Path(cfg.get("loader") or fl.VENDOR_DA)
+    import da_file
+    loader = da_file.pick(cfg.get("loader"))
     ok = loader.is_file() and sha256_file(loader) == DA_HASH
     print("  " + (good if ok else bad)(f"download agent: {loader}" if ok else f"download agent missing or not the expected file: {loader}"))
     try:

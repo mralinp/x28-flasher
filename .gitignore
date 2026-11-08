@@ -5,6 +5,7 @@ private/
 bh/
 dist/
 *.bin
+!tools/x28-flasher/assets/DA_BR.bin
 *.img
 overlay/
 build-x28-flasher/

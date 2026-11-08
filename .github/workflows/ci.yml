@@ -1,6 +1,6 @@
 # Tests the recovery tools, builds the x28-flasher app (PyInstaller, one folder) from the pinned, patched mtkclient and packages an
 # installer per system: macOS Apple silicon (.dmg), Linux x86_64 (.deb) and Windows x64 (setup .exe). No build output is ever committed;
-# the installers are workflow artifacts. The vendor download agent is never bundled.
+# the installers are workflow artifacts. The vendor download agent (tools/x28-flasher/assets/DA_BR.bin, hash-checked) is bundled by build_binary.py.
 name: ci
 
 on:

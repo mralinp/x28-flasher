@@ -11,7 +11,7 @@ selected step on the right. Only one step runs at a time. A running step keeps r
 ## What you need
 
 - A **USB cable** to the modem's USB port and the modem on its own power supply. Stable power matters during any write.
-- `DA_BR.bin`, the vendor download agent. It is not distributed here: choose it once in the app (it is remembered).
+- `DA_BR.bin`, the vendor download agent. It is already in the app and in the repo (`tools/x28-flasher/assets/`); you can choose another copy in the app.
 - For a write: a **UART adapter** on the modem's debug pins is recommended (its log is kept with the run). Without one the app asks and the way back
   from a failed write is a USB restore from your backup.
 - **Docker**, for Build image and Root access (the images are assembled in a container).

@@ -91,11 +91,13 @@ def main():
     data += [(TOOLS / "firmware" / "inventory.py", "firmware")]  # the guarded tools import build/stage_native, which looks for ../firmware/inventory.py
     data += [(f, "gui/fonts") for f in sorted((HERE / "gui" / "fonts").glob("*"))]  # the same fonts on every system
     data += [(HERE / "gui" / "index.html", "gui"), (HERE / "device_info.py", "gui")]  # the page and the tool it runs
-    if args.loader:
+    from da_file import REPO_DA  # the copy in the repo is bundled unless --loader names another
+    loader = args.loader or (REPO_DA if REPO_DA.is_file() else None)
+    if loader:
         from restore_entry import DA_HASH
-        if hashlib.sha256(args.loader.read_bytes()).hexdigest() != DA_HASH:
-            sys.exit(f"{args.loader} is not the download agent the tools expect (SHA-256 differs)")
-        shutil.copy2(args.loader, work / "DA_BR.bin")  # whatever it is called, the tools look for this name
+        if hashlib.sha256(loader.read_bytes()).hexdigest() != DA_HASH:
+            sys.exit(f"{loader} is not the download agent the tools expect (SHA-256 differs)")
+        shutil.copy2(loader, work / "DA_BR.bin")  # whatever it is called, the tools look for this name
         data += [(work / "DA_BR.bin", "vendor-da")]
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--name", "x28-flasher",
            "--distpath", args.out, "--workpath", work, "--specpath", work, "--exclude-module", "PySide6", "--exclude-module", "mtkclient.gui",
