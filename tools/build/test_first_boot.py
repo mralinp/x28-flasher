@@ -178,7 +178,7 @@ class PolicyTests(unittest.TestCase):
         self.assertFalse(r['flashable'])
 
     def test_the_switch_package_carries_the_script_this_generates(self):
-        pkg=ROOT/'package/x28-switch/files/x28-switch.init'
+        pkg=f.ROOT/'package/x28-switch/files/x28-switch.init'
         if not pkg.is_file():self.skipTest('the zlt-x28-openwrt checkout has no x28-switch package yet')
         self.assertEqual(pkg.read_text(),f.SWITCH_INIT)
 
