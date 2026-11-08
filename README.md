@@ -11,7 +11,7 @@
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux-lightgrey)
 [![License: GPL v2](https://img.shields.io/badge/license-GPL--2.0--only-blue.svg)](LICENSE)
 
-[Warning](#warning) · [What it does](#what-it-does) · [Install](#install-and-run) · [The steps](#the-steps) · [Safety model](#safety-model) · [Build](#build-the-app) · [Layout](#repository-layout) · [Tests](#tests)
+[Warning](#warning) · [What it does](#what-it-does) · [Install](#install-and-run) · [The steps](#the-steps) · [Safety model](#safety-model) · [Run and build](#run-and-build-the-commands) · [Layout](#repository-layout) · [Tests](#tests)
 
 </div>
 
