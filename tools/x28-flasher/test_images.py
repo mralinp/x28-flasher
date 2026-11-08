@@ -83,7 +83,8 @@ class LocalTests(unittest.TestCase):
 def bundle(tamper=False, extra=None, kmods=True):
     """An x28-assembly tarball: one top folder with the rootfs, overlay, kmods, ipk and its own SHA256SUMS."""
     files = {"openwrt-23.05.5-armsr-armv8-rootfs.tar.gz": b"userspace", "userspace.manifest": b"m", "overlay/package/x28-leds/files/x": b"x",
-             "ipk/alsa-lib_1.ipk": b"a", "ipk/libstdcpp6_1.ipk": b"c", "ipk/ipset_1.ipk": b"i", "ipk/libipset13_1.ipk": b"l", "ipk/x28-ipset-kernel_1.ipk": b"k"}
+             "ipk/alsa-lib_1.ipk": b"a", "ipk/libstdcpp6_1.ipk": b"c", "ipk/ipset_1.ipk": b"i", "ipk/libipset13_1.ipk": b"l", "ipk/x28-ipset-kernel_1.ipk": b"k",
+             "ipk/x28-base_1.ipk": b"b", "ipk/kmod-wireguard_1.ipk": b"w", "ipk/kmod-sched-cake_1.ipk": b"c"}
     if kmods:
         files.update({"kmods/wireguard.ko": b"w", "kmods/xt_TPROXY.ko": b"t"})
     files.update(extra or {})
@@ -122,7 +123,8 @@ class InputTests(unittest.TestCase):
         self.assertTrue(out["modern"].endswith("-rootfs.tar.gz") and Path(out["modern"]).is_file())
         self.assertTrue((Path(out["overlay"]) / "package/x28-leds/files/x").is_file())
         self.assertEqual(sorted(p.name for p in Path(out["kmods"]).glob("*.ko")), ["wireguard.ko", "xt_TPROXY.ko"])
-        self.assertEqual(sorted(Path(p).name for p in out["feed"]), ["ipset_1.ipk", "libipset13_1.ipk", "x28-ipset-kernel_1.ipk"])
+        # our packages and the three image modules are installed as packages; the bundle's other module packages are not
+        self.assertEqual(sorted(Path(p).name for p in out["feed"]), ["ipset_1.ipk", "kmod-wireguard_1.ipk", "libipset13_1.ipk", "x28-base_1.ipk", "x28-ipset-kernel_1.ipk"])
         self.assertEqual(sorted(Path(p).name for p in out["extra_ipks"]), ["alsa-lib_1.ipk", "libstdcpp6_1.ipk"])
 
     def test_a_file_that_differs_from_the_bundles_own_checksums_is_refused(self):

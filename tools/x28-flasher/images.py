@@ -77,7 +77,11 @@ def download(dest_root, fetch=get, repo=REPO):
     return out
 
 
-FEED_PREFIXES = ("ipset_", "libipset13_", "x28-ipset-kernel_")  # first_boot's --ipk; the bundle's other ipks go to stage_native
+FEED_PREFIXES = ("ipset_", "libipset13_", "x28-ipset-kernel_")  # always installed by first_boot (--ipk)
+# The packages an image carries (#420): ours, and the three module packages WireGuard and Passwall2 need. They are installed by
+# first_boot as real packages. The bundle holds every module package of the feed; the others are left for the user to install.
+PACKAGE_PREFIXES = ("x28-", "luci-proto-x28-mipc_", "kmod-wireguard_", "kmod-ipt-tproxy_", "kmod-ipt-socket_")
+STAGE_PREFIXES = ("alsa-lib_", "libstdcpp6_")  # OpenWrt packages the staging step installs
 
 
 def fetch_checked(url, want, dest, fetch=get):
@@ -144,8 +148,9 @@ def fetch_inputs(dest, tag, fetch=get):
     rootfs = sorted(root.glob("openwrt-*-rootfs.tar.gz"))
     ipks = sorted(str(p) for p in root.glob("ipk/*.ipk"))
     out = {"modern": str(rootfs[0]) if rootfs else "", "overlay": str(root / "overlay"), "kmods": str(root / "kmods"),
-           "feed": [p for p in ipks if Path(p).name.startswith(FEED_PREFIXES)], "extra_ipks": [p for p in ipks if not Path(p).name.startswith(FEED_PREFIXES)]}
-    if not rootfs or not (root / "overlay").is_dir() or not any((root / "kmods").glob("*.ko")) or len(out["feed"]) != len(FEED_PREFIXES):
+           "feed": [p for p in ipks if Path(p).name.startswith(FEED_PREFIXES + PACKAGE_PREFIXES)],
+           "extra_ipks": [p for p in ipks if Path(p).name.startswith(STAGE_PREFIXES)]}
+    if not rootfs or not (root / "overlay").is_dir() or not any((root / "kmods").glob("*.ko")) or len(set(Path(p).name.split("_")[0] for p in out["feed"]) & {"ipset", "libipset13", "x28-ipset-kernel"}) != 3:
         raise RuntimeError(f"the bundle of {tag} is missing an expected file")
     return out
 

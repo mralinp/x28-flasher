@@ -177,6 +177,31 @@ class PolicyTests(unittest.TestCase):
         self.assertNotIn(b'mtd',tree['etc/rc.local'][1])
         self.assertFalse(r['flashable'])
 
+    def test_packages_are_installed_as_packages_when_x28_base_is_among_them(self):
+        def tgz(members):
+            buf=io.BytesIO()
+            with tarfile.open(fileobj=buf,mode='w:gz') as t:
+                for name,data in members:put(t,name,data)
+            return buf.getvalue()
+        def ipk(name,files=(),extra=()):
+            path=self.root/(name+'_1_all.ipk')
+            path.write_bytes(tgz([('./debian-binary',b'2.0\n'),('./data.tar.gz',tgz(list(files))),
+                                  ('./control.tar.gz',tgz([('./control',f'Package: {name}\nVersion: 1\nArchitecture: all\n'.encode())]+list(extra)))]))
+            return path
+        inits=[ipk(n,[(f'./etc/init.d/{n}',f'#!/bin/sh /etc/rc.common\nSTART={s}\n'.encode())],[('./prerm',b'#!/bin/sh\nexit 0\n')])
+               for n,s in (('x28-modem',19),('x28-leds',99),('x28-bootok',96),('x28-dhcp',96),('x28-wps',97),('x28-wifi-l1','05'),('x28-kmods',97))]
+        storage=ipk('x28-storage',[('./etc/config/fstab',b'mine\n')],[('./conffiles',b'/etc/config/fstab\n')])
+        mods=self.root/'mods';mods.mkdir();(mods/'wireguard.ko').write_bytes(b'wg')
+        f.integrate(self.stage,self.key,self.stock,self.output,mods,inits+[storage,ipk('x28-base')])
+        tree=f.load_archive(self.output/'rootfs-management.tar.gz');status=tree['usr/lib/opkg/status'][1].decode()
+        self.assertEqual(tree['etc/config/fstab'][1],b'mine\n')  # the package's file, not the overlay's
+        self.assertIn('Conffiles:\n /etc/config/fstab '+f.digest(b'mine\n')+'\nStatus:',status)
+        self.assertEqual(tree['etc/rc.d/S99x28-leds'][0].linkname,'../init.d/x28-leds');self.assertIn('etc/rc.d/S05x28-wifi-l1',tree)
+        self.assertEqual(tree['etc/rc.d/S97x28-kmods'][0].linkname,'../init.d/x28-kmods')
+        self.assertIn('usr/lib/opkg/info/x28-leds.prerm',tree)
+        self.assertNotIn('lib/modules/x28/wireguard.ko',tree)  # the loose --kmods are ignored: kmod-wireguard comes as a package
+        self.assertNotIn('Package: kmod-wireguard',status)
+
     def test_private_modules_and_passwall2_are_wired_up(self):
         old=f.load_archive(self.archive)
         with tarfile.open(self.archive,'w:gz') as t:

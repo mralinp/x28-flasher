@@ -159,7 +159,7 @@ LUCI_HEADERS = ('usr/share/ucode/luci/template/header.ut','usr/share/ucode/luci/
 
 def luci_build_id(tree):
     """Changes whenever a file under www/ does, so browsers drop what they cached from an older image."""
-    return digest(b''.join(name.encode()+tree[name][1] for name in sorted(tree) if name.startswith('www/')))[:12]
+    return digest(b''.join(name.encode()+tree[name][1] for name in sorted(tree) if name.startswith('www/') and not tree[name][0].isdir()))[:12]  # files only: the same www/ gives the same id however its folders came
 
 
 def luci_version(ut,build):
@@ -310,33 +310,39 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
     if 'lib/preinit/00_preinit.conf' in tree:
         config=tree['lib/preinit/00_preinit.conf'][1].decode()
         put('lib/preinit/00_preinit.conf',config+'\npi_preinit_no_failsafe="y"\n')
+    # With x28-base among the packages (#420) the files of our packages come from their ipks and these placements are skipped.
+    packaged=any(Path(i).name.startswith('x28-base_') for i in ipks)
+    def own(name,path,mode=0o644):
+        if not packaged:put(name,Path(path).read_text(),mode)
+    pending=[]
     def enable(start,service,stop=None):
+        if packaged and 'etc/init.d/'+service not in tree:pending.append((start,service,stop));return  # its ipk is installed further down
         if 'etc/init.d/'+service not in tree:raise ValueError('missing service: '+service)
         for kind,n in (('S',start),('K',stop)):
             if n is None:continue
             link=tarfile.TarInfo(f'etc/rc.d/{kind}{n}{service}');link.type=tarfile.SYMTYPE;link.linkname='../init.d/'+service;tree[link.name]=(link,b'')
     put('etc/init.d/x28-switch',SWITCH_INIT,0o755);enable(18,'x28-switch')
-    put('sbin/x28-leds',(LEDS/'x28-leds').read_text(),0o755)
-    put('sbin/x28-wps',(WIFI/'x28-wps').read_text(),0o755)
-    put('etc/init.d/x28-wps',(WIFI/'x28-wps.init').read_text(),0o755);enable(97,'x28-wps')
+    own('sbin/x28-leds',LEDS/'x28-leds',0o755)
+    own('sbin/x28-wps',WIFI/'x28-wps',0o755)
+    own('etc/init.d/x28-wps',WIFI/'x28-wps.init',0o755);enable(97,'x28-wps')
     # Matches l1profile.dat to the Wi-Fi chips on PCI before mt_wifi loads (S10boot): the original X28 has one chip, the PRO two.
-    put('sbin/x28-wifi-l1',(WIFI/'x28-wifi-l1').read_text(),0o755)
-    put('etc/init.d/x28-wifi-l1',(WIFI/'x28-wifi-l1.init').read_text(),0o755);enable('05','x28-wifi-l1')
+    own('sbin/x28-wifi-l1',WIFI/'x28-wifi-l1',0o755)
+    own('etc/init.d/x28-wifi-l1',WIFI/'x28-wifi-l1.init',0o755);enable('05','x28-wifi-l1')
     # The staged boot script runs `wifi config` once when /etc/config/wireless is missing: WPA2 with a random key.
-    put('lib/netifd/wireless/mtwifi.sh',(WIFI/'mtwifi.sh').read_text(),0o755)
-    put('lib/wifi/mtwifi.sh',(WIFI/'mtwifi.detect').read_text())
-    put('usr/share/x28-wifi/regions',(WIFI/'regions').read_text())
-    put('usr/share/x28-wifi/channels5',(WIFI/'channels5').read_text())
+    own('lib/netifd/wireless/mtwifi.sh',WIFI/'mtwifi.sh',0o755)
+    own('lib/wifi/mtwifi.sh',WIFI/'mtwifi.detect')
+    own('usr/share/x28-wifi/regions',WIFI/'regions')
+    own('usr/share/x28-wifi/channels5',WIFI/'channels5')
     if LUCI_WIRELESS in tree:put(LUCI_WIRELESS,luci_mtwifi(tree[LUCI_WIRELESS][1].decode()))
     if LUCI_STORAGE in tree:put(LUCI_STORAGE,luci_storage(tree[LUCI_STORAGE][1].decode()))
     if LUCI_ANALYSIS in tree:put(LUCI_ANALYSIS,luci_analysis(tree[LUCI_ANALYSIS][1].decode()))
     # Cellular WAN as a stock-looking netifd protocol (#135): the proto handler, its APN helper and the LuCI form.
-    put('lib/netifd/proto/x28_mipc.sh',(MIPC/'x28_mipc.sh').read_text(),0o755)
-    put('sbin/x28-apn',(MIPC/'x28-apn').read_text(),0o755)
+    own('lib/netifd/proto/x28_mipc.sh',MIPC/'x28_mipc.sh',0o755)
+    own('sbin/x28-apn',MIPC/'x28-apn',0o755)
     for name in ('x28-modem-status','x28-plmn-scan'):  # the LuCI Carrier tab runs these through rpcd (its ACL names them); releases before v0.54 lack them
-        if (MIPC/name).is_file():put('sbin/'+name,(MIPC/name).read_text(),0o755)
-    put('www/luci-static/resources/protocol/x28_mipc.js',(LUCI_MIPC/'htdocs/luci-static/resources/protocol/x28_mipc.js').read_text())
-    put('usr/share/rpcd/acl.d/luci-proto-x28-mipc.json',(LUCI_MIPC/'root/usr/share/rpcd/acl.d/luci-proto-x28-mipc.json').read_text())
+        if (MIPC/name).is_file():own('sbin/'+name,MIPC/name,0o755)
+    own('www/luci-static/resources/protocol/x28_mipc.js',LUCI_MIPC/'htdocs/luci-static/resources/protocol/x28_mipc.js')
+    own('usr/share/rpcd/acl.d/luci-proto-x28-mipc.json',LUCI_MIPC/'root/usr/share/rpcd/acl.d/luci-proto-x28-mipc.json')
     put('etc/config/system',"""config system
  option hostname 'x28'
  option timezone 'UTC'
@@ -352,8 +358,8 @@ config timeserver 'ntp'
  list server '2.openwrt.pool.ntp.org'
  list server '3.openwrt.pool.ntp.org'
 """)
-    put('etc/init.d/x28-modem',(MODEM/'x28-modem.init').read_text(),0o755);enable(19,'x28-modem')
-    put('etc/init.d/x28-leds',(LEDS/'x28-leds.init').read_text(),0o755);enable(99,'x28-leds')
+    own('etc/init.d/x28-modem',MODEM/'x28-modem.init',0o755);enable(19,'x28-modem')
+    own('etc/init.d/x28-leds',LEDS/'x28-leds.init',0o755);enable(99,'x28-leds')
     enable(19,'dnsmasq');enable(35,'odhcpd')
     enable(12,'rpcd');enable(19,'firewall');enable(50,'uhttpd')  # LuCI and NAT (#141)
     if 'etc/config/uhttpd' in tree:  # HTTPS with a self-signed certificate uhttpd makes on first start (px5g), HTTP redirected
@@ -364,12 +370,12 @@ config timeserver 'ntp'
             config,n=re.subn(old,new,config)
             if n!=1:raise ValueError('unexpected uhttpd config: '+old)
         put('etc/config/uhttpd',config)
-    put('etc/init.d/x28-bootok',(BOOTOK/'x28-bootok.init').read_text(),0o755);enable(96,'x28-bootok')
-    if DHCP.is_dir():  # dnsmasq can start without a DHCP range; this restarts it once the LAN has its address (zlt-x28-openwrt#370)
-        put('etc/init.d/x28-dhcp',(DHCP/'x28-dhcp.init').read_text(),0o755);enable(96,'x28-dhcp')
-        put('usr/libexec/x28-dhcp-guard',(DHCP/'x28-dhcp-guard').read_text(),0o755)
-    put('lib/preinit/79_x28_user_data',(STORAGE/'x28-user-data.preinit').read_text())
-    put('etc/config/fstab',(STORAGE/'fstab').read_text())
+    own('etc/init.d/x28-bootok',BOOTOK/'x28-bootok.init',0o755);enable(96,'x28-bootok')
+    if packaged or DHCP.is_dir():  # dnsmasq can start without a DHCP range; this restarts it once the LAN has its address (zlt-x28-openwrt#370)
+        own('etc/init.d/x28-dhcp',DHCP/'x28-dhcp.init',0o755);enable(96,'x28-dhcp')
+        own('usr/libexec/x28-dhcp-guard',DHCP/'x28-dhcp-guard',0o755)
+    own('lib/preinit/79_x28_user_data',STORAGE/'x28-user-data.preinit')
+    own('etc/config/fstab',STORAGE/'fstab')
     for name in UBI_WRITERS:
         if name in tree:removed.append(name);del tree[name]
     enable(98,'sysntpd')  # without a set clock HTTPS (opkg) fails: the unit boots at 2010-01-01 (#169)
@@ -426,7 +432,7 @@ config dhcp 'wan'
         put('usr/lib/opkg/info/kernel.list','')
     enable(90,'openvpn')  # starts only the tunnels enabled in its config
     # Built against the private SDK tree, so they come from the local build, never from the repo (#227, #198).
-    kmods={p:[Path(kmods_dir)/(m+'.ko') for m in ms] for p,ms in KMOD_PACKAGES.items()} if kmods_dir else {}
+    kmods={p:[Path(kmods_dir)/(m+'.ko') for m in ms] for p,ms in KMOD_PACKAGES.items()} if kmods_dir and not packaged else {}  # packaged: the module ipks carry them
     if kmods:  # x28-kmods loads them from here; the kernel's modprobe never looks here (see x28-kmods.init)
         info=tarfile.TarInfo('lib/modules/x28');info.type=tarfile.DIRTYPE;info.mode=0o755;info.uid=info.gid=0;tree[info.name]=(info,b'')
     for package,paths in kmods.items():
@@ -439,14 +445,23 @@ config dhcp 'wan'
         put(f'usr/lib/opkg/info/{package}.control',record)
         put(f'usr/lib/opkg/info/{package}.list',''.join(f'/lib/modules/x28/{p.name}\n' for p in paths))
     if kmods:put('etc/init.d/x28-kmods',(KMODS/'x28-kmods.init').read_text(),0o755);enable(97,'x28-kmods')
-    def record(control,files):
+    if packaged:enable(97,'x28-kmods')  # its ipk is installed below
+    def record(control,files,scripts=(),conffiles=()):
         name=re.search(r'^Package: (.+)$',control,re.M).group(1)
-        put('usr/lib/opkg/status',tree['usr/lib/opkg/status'][1].decode().rstrip('\n')+'\n\n'+control.rstrip('\n')+'\nStatus: install user installed\n')
+        # opkg keeps a config file's hash in the status record; an upgrade or removal leaves the file alone if it changed.
+        conf=''.join(f' /{c} {digest(tree[c][1])}\n' for c in conffiles)
+        put('usr/lib/opkg/status',tree['usr/lib/opkg/status'][1].decode().rstrip('\n')+'\n\n'+control.rstrip('\n')+'\n'+('Conffiles:\n'+conf if conf else '')+'Status: install user installed\n')
         put(f'usr/lib/opkg/info/{name}.control',control);put(f'usr/lib/opkg/info/{name}.list',''.join('/'+n+'\n' for n in files))
+        for script,text in scripts:put(f'usr/lib/opkg/info/{name}.{script}',text,0o755)  # prerm disables the init link on removal
     for ipk in ipks:  # whole packages from the X28 feed, e.g. ipset for Passwall2's rules (#200)
         with tarfile.open(fileobj=io.BytesIO(Path(ipk).read_bytes()),mode='r:gz') as outer:
             data=outer.extractfile('./data.tar.gz').read();control=outer.extractfile('./control.tar.gz').read()
-        with tarfile.open(fileobj=io.BytesIO(control),mode='r:gz') as t:control=t.extractfile('./control').read().decode()
+        scripts=[];conffiles=[]
+        with tarfile.open(fileobj=io.BytesIO(control),mode='r:gz') as t:
+            for script in ('preinst','postinst','prerm','postrm'):
+                if './'+script in t.getnames():scripts.append((script,t.extractfile('./'+script).read().decode()))
+            if './conffiles' in t.getnames():conffiles=t.extractfile('./conffiles').read().decode().split()
+            control=t.extractfile('./control').read().decode()
         files=[]
         with tarfile.open(fileobj=io.BytesIO(data),mode='r:gz') as t:
             for m in t.getmembers():
@@ -456,7 +471,8 @@ config dhcp 'wan'
                 info=copy.copy(m);info.name=name;info.uid=info.gid=0;info.uname=info.gname=''
                 tree[name]=(info,t.extractfile(m).read() if m.isfile() else b'')
                 if not m.isdir():files.append(name)
-        record(control,files)
+        record(control,files,scripts,[c.lstrip('/') for c in conffiles])
+    for start,service,stop in pending:enable(start,service,stop)
     # The vendor kernel has these built in or as stock modules; record them so opkg sees every dependency met (#200).
     status=tree['usr/lib/opkg/status'][1].decode()
     have=set(re.findall(r'^Package: (.+)$',status,re.M))|{p.strip().split(' ')[0] for v in re.findall(r'^Provides: (.+)$',status,re.M) for p in v.split(',')}
