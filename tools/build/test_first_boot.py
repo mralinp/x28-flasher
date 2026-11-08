@@ -213,7 +213,9 @@ class PolicyTests(unittest.TestCase):
         # dependencies before their users, every packaged module in the list
         order=loader.split("MODS='")[1].split("'")[0].split()
         self.assertLess(order.index('x28_udp_lookup'),order.index('nf_socket_ipv4'));self.assertLess(order.index('nf_tproxy_ipv6'),order.index('xt_TPROXY'))
-        self.assertEqual(sorted(order),sorted(n.split('/')[-1][:-3] for n in tree if n.startswith('lib/modules/x28/')))
+        # every module in the image is in the list; the list also names modules that opkg installs later from the feed (the loader skips names with no file)
+        self.assertEqual(len(order),len(set(order)))
+        self.assertLessEqual({n.split('/')[-1][:-3] for n in tree if n.startswith('lib/modules/x28/')},set(order))
         self.assertFalse(any(n.startswith('lib/modules/4.19.205/') for n in tree))  # out of modprobe's reach
         self.assertIn("config passwall2\n\toption init 'passwall2'\n",tree['etc/config/ucitrack'][1].decode())
         self.assertEqual(tree['etc/rc.d/S99passwall2'][0].linkname,'../init.d/passwall2')  # luci-reload skips disabled services

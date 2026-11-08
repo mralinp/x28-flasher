@@ -59,7 +59,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="$(gh release list -R mralinp/zlt-x28-openwrt --limit 1 --json tagName -q '.[0].tagName')"  # 0.x are pre-releases, which a bare download skips
+          TAG="$(gh release list -R mralinp/zlt-x28-openwrt --limit 30 --json tagName -q '[.[]|select(.tagName|test("^v[0-9]+[.][0-9]+[.][0-9]+$"))][0].tagName')"  # the newest firmware release: feed-N and kmods-* releases carry no assembly; 0.x are pre-releases, which a bare download skips
           gh release download "$TAG" -R mralinp/zlt-x28-openwrt -p 'x28-assembly-*.tar.gz' -D ov
           mkdir bundle && tar -xzf ov/x28-assembly-*.tar.gz -C bundle --strip-components=1
           mv bundle/overlay overlay
