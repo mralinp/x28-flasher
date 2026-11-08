@@ -177,6 +177,11 @@ class PolicyTests(unittest.TestCase):
         self.assertNotIn(b'mtd',tree['etc/rc.local'][1])
         self.assertFalse(r['flashable'])
 
+    def test_the_switch_package_carries_the_script_this_generates(self):
+        pkg=ROOT/'package/x28-switch/files/x28-switch.init'
+        if not pkg.is_file():self.skipTest('the zlt-x28-openwrt checkout has no x28-switch package yet')
+        self.assertEqual(pkg.read_text(),f.SWITCH_INIT)
+
     def test_packages_are_installed_as_packages_when_x28_base_is_among_them(self):
         def tgz(members):
             buf=io.BytesIO()
@@ -189,7 +194,7 @@ class PolicyTests(unittest.TestCase):
                                   ('./control.tar.gz',tgz([('./control',f'Package: {name}\nVersion: 1\nArchitecture: all\n'.encode())]+list(extra)))]))
             return path
         inits=[ipk(n,[(f'./etc/init.d/{n}',f'#!/bin/sh /etc/rc.common\nSTART={s}\n'.encode())],[('./prerm',b'#!/bin/sh\nexit 0\n')])
-               for n,s in (('x28-modem',19),('x28-leds',99),('x28-bootok',96),('x28-dhcp',96),('x28-wps',97),('x28-wifi-l1','05'),('x28-kmods',97))]
+               for n,s in (('x28-modem',19),('x28-leds',99),('x28-bootok',96),('x28-dhcp',96),('x28-wps',97),('x28-wifi-l1','05'),('x28-kmods',97),('x28-switch',18))]
         storage=ipk('x28-storage',[('./etc/config/fstab',b'mine\n')],[('./conffiles',b'/etc/config/fstab\n')])
         mods=self.root/'mods';mods.mkdir();(mods/'wireguard.ko').write_bytes(b'wg')
         f.integrate(self.stage,self.key,self.stock,self.output,mods,inits+[storage,ipk('x28-base')])
@@ -198,6 +203,7 @@ class PolicyTests(unittest.TestCase):
         self.assertIn('Conffiles:\n /etc/config/fstab '+f.digest(b'mine\n')+'\nStatus:',status)
         self.assertEqual(tree['etc/rc.d/S99x28-leds'][0].linkname,'../init.d/x28-leds');self.assertIn('etc/rc.d/S05x28-wifi-l1',tree)
         self.assertEqual(tree['etc/rc.d/S97x28-kmods'][0].linkname,'../init.d/x28-kmods')
+        self.assertEqual(tree['etc/init.d/x28-switch'][1],b'#!/bin/sh /etc/rc.common\nSTART=18\n');self.assertEqual(tree['etc/rc.d/S18x28-switch'][0].linkname,'../init.d/x28-switch')  # the package's script, not the generated one
         self.assertIn('usr/lib/opkg/info/x28-leds.prerm',tree)
         self.assertNotIn('lib/modules/x28/wireguard.ko',tree)  # the loose --kmods are ignored: kmod-wireguard comes as a package
         self.assertNotIn('Package: kmod-wireguard',status)

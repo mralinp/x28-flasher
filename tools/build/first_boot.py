@@ -321,7 +321,8 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
         for kind,n in (('S',start),('K',stop)):
             if n is None:continue
             link=tarfile.TarInfo(f'etc/rc.d/{kind}{n}{service}');link.type=tarfile.SYMTYPE;link.linkname='../init.d/'+service;tree[link.name]=(link,b'')
-    put('etc/init.d/x28-switch',SWITCH_INIT,0o755);enable(18,'x28-switch')
+    if not any(Path(i).name.startswith('x28-switch_') for i in ipks):put('etc/init.d/x28-switch',SWITCH_INIT,0o755)  # newer bundles carry it as a package (zlt-x28-openwrt#436)
+    enable(18,'x28-switch')
     own('sbin/x28-leds',LEDS/'x28-leds',0o755)
     own('sbin/x28-wps',WIFI/'x28-wps',0o755)
     own('etc/init.d/x28-wps',WIFI/'x28-wps.init',0o755);enable(97,'x28-wps')
