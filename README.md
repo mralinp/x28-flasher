@@ -63,7 +63,7 @@ Only this computer's browser can reach the page; its **Quit** button stops the f
 `~/Library/Logs/x28-flasher.log`.
 
 You also need the Quectel download agent (`DA_BR.bin`). It is not in this repo; choose it in the page, or bake it into
-your own build (see [Build](#build-the-app)).
+your own build (see [Run and build](#run-and-build-the-commands)).
 
 ## The steps
 
@@ -87,16 +87,55 @@ Details, prompts and recovery are in **[the manual](docs/USAGE.md)**: what each 
 - The vendor download agent and any firmware dumps are **never committed** (`.gitignore`) and never built by CI.
 - Telnet is not offered; `stock_access.py` sets up key-only SSH.
 
-## Build the app
+## Run and build: the commands
+
+**Run from the checkout** (the version that can write; use this for a flash):
 
 ```bash
-python3 -m venv bh/venv    # then see .github/workflows/ci.yml for the pinned mtkclient checkout in bh/src and its pip packages
-bh/venv/bin/python tools/x28-flasher/build_binary.py --home bh --out dist
-python3 tools/x28-flasher/build_app.py        # dist/X28 Flasher.app (native window when swiftc is available)
+cd x28-flasher
+python3 tools/recovery/setup_mtkclient.py        # once: the pinned, patched mtkclient (the page's Setup box does this too)
+python3 tools/x28-flasher/x28_flasher.py         # prints the page address and opens it; Ctrl-C or the page's Quit stops it
+python3 tools/x28-flasher/x28_flasher.py wizard  # the same steps as a terminal menu
 ```
 
-Add `--loader /path/to/DA_BR.bin` to `build_binary.py` to put your download agent inside the app (checked against the
-expected SHA-256). It is Quectel's file: an app built with it is for your own use, do not share it.
+**Run the packaged app** (read-only until [#272](https://github.com/mralinp/x28-flasher/issues/272); a program in the terminal, not a window, unless you built the app below):
+
+```bash
+dist/x28-flasher/x28-flasher                     # the frozen binary: serves the page and opens your browser
+open "dist/X28 Flasher.app"                      # the same in a native window
+```
+
+**Test:**
+
+```bash
+export X28_OVERLAY=/path/to/zlt-x28-openwrt      # first_boot.py reads the package files from that checkout (or an extracted x28-overlay-*.tar.gz)
+for t in tools/build/test_*.py tools/recovery/test_*.py tools/x28-flasher/test_*.py; do python3 "$t" || break; done
+```
+
+**Build the app** from a fresh clone (macOS on Apple silicon; `brew install libusb` once). This is what CI does, in `.github/workflows/ci.yml`:
+
+```bash
+# 1. the pinned mtkclient and a build venv in bh/
+COMMIT="$(python3 -c "import sys; sys.path.insert(0, 'tools/recovery'); import common; print(common.MTKCLIENT_COMMIT)")"
+mkdir -p bh/src && git -C bh/src init -q
+git -C bh/src fetch -q --depth 1 https://github.com/bkerler/mtkclient.git "$COMMIT"
+git -C bh/src -c advice.detachedHead=false checkout -q FETCH_HEAD
+python3 -m venv bh/venv
+bh/venv/bin/pip install pycryptodome pycryptodomex pyserial pyusb colorama questionary pyinstaller
+# 2. the binary (dist/x28-flasher/), then the app (dist/X28 Flasher.app, a native window when swiftc is available)
+bh/venv/bin/python tools/x28-flasher/build_binary.py --home bh --out dist
+python3 tools/x28-flasher/build_app.py
+```
+
+For your own use, put the download agent inside (checked against its expected SHA-256; it is Quectel's file, so do not share the result), and name a version
+if you want one shown in the page (a local build says `dev`; CI passes the release it is about to tag):
+
+```bash
+bh/venv/bin/python tools/x28-flasher/build_binary.py --home bh --out dist --loader /path/to/DA_BR.bin --version 0.1.0
+python3 tools/x28-flasher/build_app.py
+```
+
+Build again after every `git pull`; `dist/`, `bh/` and `private/` are ignored by git and stay in the checkout.
 
 ## Repository layout
 
