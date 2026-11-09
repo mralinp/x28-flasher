@@ -101,7 +101,9 @@ class PolicyTests(unittest.TestCase):
         r=f.integrate(self.stage,self.key,self.stock,self.output)
         tree=f.load_archive(self.output/'rootfs-management.tar.gz')
         self.assertNotIn('etc/rc.d/S99zmtk_boot_done',tree)
-        self.assertNotEqual(tree['lib/upgrade/platform.sh'][1],b'unsafe') if 'lib/upgrade/platform.sh' in tree else None  # the stock one is gone; ours comes from the bundle
+        ours=f.SYSUPGRADE/'lib/upgrade/platform.sh'  # the stock one is gone; ours comes from the bundle when it carries it
+        if ours.is_file():self.assertEqual(tree['lib/upgrade/platform.sh'][1],ours.read_bytes())
+        else:self.assertNotIn('lib/upgrade/platform.sh',tree)
         self.assertNotIn('lib/preinit/79_move_config',tree)
         for stage2 in STAGE2:self.assertIn(stage2,tree)
         self.assertNotIn('etc/uci-defaults/99-unsafe',tree)

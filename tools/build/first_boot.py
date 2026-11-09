@@ -380,7 +380,8 @@ config timeserver 'ntp'
         own('etc/init.d/x28-dhcp',DHCP/'x28-dhcp.init',0o755);enable(96,'x28-dhcp')
         own('usr/libexec/x28-dhcp-guard',DHCP/'x28-dhcp-guard',0o755)
     own('lib/preinit/79_x28_user_data',STORAGE/'x28-user-data.preinit')
-    if (SYSUPGRADE/'lib/upgrade/platform.sh').is_file():own('lib/upgrade/platform.sh',SYSUPGRADE/'lib/upgrade/platform.sh')
+    # Not own(): that does nothing for a packaged image, and sysupgrade is not an ipk of the feed yet, so nothing else would install it.
+    if (SYSUPGRADE/'lib/upgrade/platform.sh').is_file():put('lib/upgrade/platform.sh',(SYSUPGRADE/'lib/upgrade/platform.sh').read_text(),0o644)
     own('etc/config/fstab',STORAGE/'fstab')
     for name in UBI_WRITERS:
         if name in tree:removed.append(name);del tree[name]
