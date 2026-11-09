@@ -72,7 +72,8 @@ class GuardTests(unittest.TestCase):
         with self.assertRaises(ValueError):g.check(tree({**BASE,'etc/init.d/x28-other':other},LINK+[('etc/rc.d/S96x28-other','../init.d/x28-other')]))
 
     def test_x28_upgrade_may_name_sysupgrade_only_while_nothing_at_boot_starts_it(self):
-        script=(ROOT/'package/x28-update/files/x28-upgrade').read_bytes()
+        # The exemption does not depend on the script's text (unlike bootok's), and CI's overlay has no x28-update files: a stand-in.
+        script=b'#!/bin/sh\n# x28-upgrade -y: download, sysupgrade -T, then sysupgrade -n\nSYSUPGRADE=sysupgrade\n$SYSUPGRADE -n "$f"\n'
         boot={**BASE,'etc/init.d/network':b'#!/bin/sh /etc/rc.common\nPATH=/usr/sbin:/bin\n'}  # a PATH makes all of /usr/sbin reachable
         name='usr/sbin/x28-upgrade'
         ok={name:script,'usr/share/rpcd/acl.d/x28-update.json':b'"/usr/sbin/x28-upgrade -y -b": [ "exec" ]',
