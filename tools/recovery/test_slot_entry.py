@@ -110,6 +110,8 @@ class GateTests(unittest.TestCase):
         self.assertEqual(sorted(flags('misc', 'write')), ['prior_identical', 'prior_rootfs_a'])
         self.assertEqual(flags('misc', 'identical'), ['prior_rootfs_a'])
         self.assertEqual((flags('rootfs_a', 'restore'), flags('misc', 'restore')), (['resume'], ['resume']))
+        self.assertEqual((flags('rootfs_b', 'identical'), flags('rootfs_b', 'write'), flags('rootfs_b', 'restore')), ([], [], ['resume']))  # #89
+        self.assertEqual([o[0] for o in e.OPTIONAL_PRIOR[('rootfs_b', 'write')]], ['prior_identical'])
         self.assertTrue(all(p[3] for k, v in e.PRIOR.items() if k[1] != 'restore' for p in v))
         self.assertTrue(all(not p[3] for k, v in e.PRIOR.items() if k[1] == 'restore' for p in v))
 
@@ -180,6 +182,21 @@ class GateTests(unittest.TestCase):
             self.skipTest('private build output not present')
         head = e.base_head((base / 'rootfs-a-experimental.bin').read_bytes(), json.loads((base / 'manifest.json').read_text()))
         self.assertEqual(head, 33 * 0x40000)
+
+
+class RootfsBEntryTests(unittest.TestCase):
+    def test_phrase_names_rootfs_b_and_the_bytes_that_land(self):
+        b = slot_session.rootfs_b_spec('abcdef1234567890' * 4)
+        self.assertEqual(e.phrase(b, 'write', b.candidate_sha, False), 'WRITE write rootfs_b abcdef123456')
+        self.assertEqual(e.phrase(b, 'restore', b.candidate_sha, False), 'WRITE restore rootfs_b c4e3f3d25b3a')  # the backup's stock rootfs_b
+        self.assertNotIn('MISC-SELECTS-A', e.phrase(b, 'write', b.candidate_sha, False))
+
+    def test_no_ssh_and_no_uart_are_allowed_for_rootfs_b_but_not_restore(self):
+        b = slot_session.rootfs_b_spec('c' * 64)
+        e.check_no_ssh(True, 'rootfs_b', 'write', b)
+        e.check_no_uart(True, 'rootfs_b', None)
+        with self.assertRaises(ValueError):
+            e.check_no_ssh(True, 'rootfs_b', 'restore', b)
 
 
 class NoSshTests(unittest.TestCase):

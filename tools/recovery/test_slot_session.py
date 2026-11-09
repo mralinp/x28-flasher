@@ -139,6 +139,59 @@ class SessionTests(FakeDA):
         self.assertNotEqual(a, self.run_('identical'))
 
 
+class RootfsBTests(FakeDA):
+    """#89: write the active slot B over DL: the first erase blocks are compared before the write (the tail is a live overlay), A and misc are guards."""
+    def setUp(self):
+        super().setUp()
+        guards = self.spec.guards[:2] + (('misc', 0x2200, 16, None),)
+        self.spec = self.spec._replace(guards=guards, restore_guards=guards, base_head=32)  # no base_sha: the backup is the start
+        self.data[0x2200] = b'M' * 16
+
+    def test_the_overlay_tail_may_differ_but_the_head_may_not(self):
+        self.data[0x1000] = self.original[:32] + b'\xee' * 32
+        self.run_('write')
+        self.assertEqual(self.data[0x1000], self.candidate)
+        self.data[0x1000] = b'\xee' * 32 + self.original[32:]
+        with self.assertRaises(ValueError):
+            self.run_('write')
+        self.assertEqual(len(self.writes), 1)
+
+    def test_restore_puts_the_backup_back_and_misc_stays_unchanged(self):
+        self.run_('write')
+        self.run_('restore')
+        self.assertEqual(self.data[0x1000], self.original)
+        self.assertEqual(self.data[0x2200], b'M' * 16)
+
+    def test_misc_changing_during_the_session_stops(self):
+        self.drift_guard = 0
+        orig = self.writeflash
+        def drift(addr, length, filename, **kw):
+            ack = orig(addr, length, filename, **kw)
+            self.data[0x2200] = b'N' * 16
+            return ack
+        self.writeflash = drift
+        with self.assertRaises(ValueError):
+            self.run_('write')
+
+
+class MiscBootsBTests(unittest.TestCase):
+    def misc(self, a, b):
+        m = bytearray(b'\xff' * 0x100000)
+        for off in s.MISC_COPIES:
+            m[off:off + 16] = b'\x00AB0\xff\xff\xff\xff' + a + b
+        return bytes(m)
+
+    def test_only_a_consistent_record_that_prefers_b(self):
+        self.assertTrue(s.misc_boots_b(self.misc(bytes.fromhex('0e000101'), bytes.fromhex('0f000101'))))  # stock
+        self.assertTrue(s.misc_boots_b(self.misc(bytes.fromhex('0e000000'), bytes.fromhex('0f000100'))))  # a native unit that booted B
+        self.assertFalse(s.misc_boots_b(self.misc(bytes.fromhex('0f000000'), bytes.fromhex('0e000100'))))  # A first
+        self.assertFalse(s.misc_boots_b(self.misc(bytes.fromhex('0f000000'), bytes.fromhex('0f000100'))))  # a tie goes to A
+        mixed = bytearray(self.misc(bytes.fromhex('0e000101'), bytes.fromhex('0f000101')))
+        mixed[s.MISC_COPIES[2] + 12] = 0x0d
+        self.assertFalse(s.misc_boots_b(bytes(mixed)))
+        self.assertFalse(s.misc_boots_b(b'short'))
+
+
 class SpecTests(unittest.TestCase):
     def test_misc_candidate_must_be_exactly_the_four_copy_selection(self):
         original = bytearray(b'\xff' * 0x100000)
@@ -182,6 +235,23 @@ class SpecTests(unittest.TestCase):
             ranges = sorted((g[1], g[1] + g[2]) for g in (*spec.guards, (spec.name, spec.addr, spec.size)))
             for (a0, a1), (b0, b1) in zip(ranges, ranges[1:]):
                 self.assertLessEqual(a1, b0, 'overlapping ranges')
+
+    def test_rootfs_b_spec_guards_slot_a_and_the_chain_and_never_the_target(self):
+        b = s.rootfs_b_spec('a' * 64)
+        names = {g[0] for g in b.guards}
+        self.assertEqual(names, {'boot_a', 'rootfs_sig_a', 'rootfs_sig_b', 'boot_para', 'lk_a', 'tee_a', 'boot_b', 'lk_b', 'tee_b', 'proinfo',
+                                 'md1dsp_a', 'md1dsp_b', 'mcf1_a', 'mcf1_b', 'mcf2_a', 'mcf2_b', 'rootfs_a', 'misc'})
+        self.assertEqual((b.name, b.addr, b.size, b.base_sha, b.base_head), ('rootfs_b', 0x1fc00000, 0x4000000, '', s.ROOTFS_B_HEAD))
+        guards = dict((g[0], g[3]) for g in b.guards)
+        self.assertEqual((guards['rootfs_a'], guards['misc']), (s.ROOTFS_A_SHA, s.MISC_SHA))
+        ranges = sorted((g[1], g[1] + g[2]) for g in (*b.guards, ('rootfs_b', b.addr, b.size)))
+        for (a0, a1), (b0, b1) in zip(ranges, ranges[1:]):
+            self.assertLessEqual(a1, b0, 'overlapping ranges')
+        for bad in ('short', s.ROOTFS_A_SHA, s.ROOTFS_B_SHA):
+            with self.assertRaises(ValueError):
+                s.rootfs_b_spec(bad)
+        with self.assertRaises(ValueError):
+            s.validate_rootfs_b(b'\xff' * 0x4000000, b'\xff' * 0x4000000)
 
     def test_hashes_are_pinned_and_a_new_rootfs_a_hash_is_required(self):
         rootfs_a, misc = self.specs()

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guarded rootfs_a / misc entry (#99, #100) around slot_session.py. Dry-run is offline; --write needs approval.
+"""Guarded rootfs_a / rootfs_b / misc entry (#99, #100, #89) around slot_session.py. Dry-run is offline; --write needs approval.
 
 Use the private mtkclient venv Python for --write. No automatic reboot or retry. Merging this file approves
 nothing: the typed phrase attests that the owner approved this exact target, mode and image, and that the
@@ -25,12 +25,16 @@ PRIOR = {
     ('rootfs_a', 'identical'): [],
     ('rootfs_a', 'write'): [],  # a rehearsal is optional for the rootfs_a write (OPTIONAL_PRIOR); misc still requires its own
     ('rootfs_a', 'restore'): [('resume', 'rootfs_a', 'write', False)],
+    ('rootfs_b', 'identical'): [],
+    ('rootfs_b', 'write'): [],  # a rehearsal is optional here too
+    ('rootfs_b', 'restore'): [('resume', 'rootfs_b', 'write', False)],
     ('misc', 'identical'): [('prior_rootfs_a', 'rootfs_a', 'write', True)],
     ('misc', 'write'): [('prior_identical', 'misc', 'identical', True), ('prior_rootfs_a', 'rootfs_a', 'write', True)],
     ('misc', 'restore'): [('resume', 'misc', 'write', False)],
 }
 # Priors a run may use but does not need: when given they are checked exactly like a required one.
-OPTIONAL_PRIOR = {('rootfs_a', 'write'): [('prior_identical', 'rootfs_a', 'identical', True)]}
+OPTIONAL_PRIOR = {('rootfs_a', 'write'): [('prior_identical', 'rootfs_a', 'identical', True)],
+                  ('rootfs_b', 'write'): [('prior_identical', 'rootfs_b', 'identical', True)]}
 MAX_AGE = 86400
 
 
@@ -89,7 +93,16 @@ def load_inputs(backup, loader, target, mode, candidate_dir, base_dir=None):
         base = (base_dir / 'rootfs-a-experimental.bin').read_bytes()
         if json.loads((base_dir / 'manifest.json').read_text()).get('padded_sha256') != digest(base):
             raise ValueError('base does not match its build manifest')
-    if target == 'rootfs_a':
+    if target == 'rootfs_b':
+        # The slot the unit boots (#89, stock: B): written over DL with misc untouched, so the backup must show misc selecting B.
+        images = {n: Path(by_name[n]['image']).read_bytes() for n in ('misc', 'rootfs_a', 'rootfs_b', 'boot_para')}
+        if any(digest(images[n]) != by_name[n]['sha256'] for n in images):
+            raise ValueError('backup image changed after verification')
+        pins = session.unit_pins(images, boot_order=False)
+        if not session.misc_boots_b(images['misc']):  # the slot that boots must be B in all four copies: stock, or a native unit that booted B
+            raise ValueError('the backup shows misc selecting slot A (or inconsistent copies): rootfs_b is only written on a unit that boots B; take a fresh backup')
+        spec, candidate = session.rootfs_b_spec(rootfs_a_sha, pins), rootfs_a_image
+    elif target == 'rootfs_a':
         head = base_head(base, json.loads((base_dir / 'manifest.json').read_text())) if base else 0
         images = {n: Path(by_name[n]['image']).read_bytes() for n in ('misc', 'rootfs_a', 'rootfs_b', 'boot_para')}
         if any(digest(images[n]) != by_name[n]['sha256'] for n in images):  # pin the bytes verified_backup hashed, not a second read
@@ -169,18 +182,18 @@ def phrase(spec, mode, rootfs_a_sha, same_disk, no_ssh=False, no_uart=False):
 
 
 def check_no_ssh(no_ssh, target, mode, spec):
-    if no_ssh and (target != 'rootfs_a' or spec.base_sha or mode == 'restore'):
-        raise ValueError('--no-ssh is only for rootfs_a identical/write from stock B (no --base-dir): the USB read of misc stands in for the live slot')
+    if no_ssh and (target not in ('rootfs_a', 'rootfs_b') or spec.base_sha or mode == 'restore'):
+        raise ValueError('--no-ssh is only for rootfs_a/rootfs_b identical/write from stock B (no --base-dir): the USB read of misc stands in for the live slot')
 
 
 def check_no_uart(no_uart, target, uart_log):
-    if no_uart and (target != 'rootfs_a' or uart_log):
-        raise ValueError('--no-uart is only for rootfs_a and excludes --uart-log; misc keeps the UART requirement')
+    if no_uart and (target not in ('rootfs_a', 'rootfs_b') or uart_log):
+        raise ValueError('--no-uart is only for rootfs_a/rootfs_b and excludes --uart-log; misc keeps the UART requirement')
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument('target', choices=('rootfs_a', 'misc'))
+    ap.add_argument('target', choices=('rootfs_a', 'rootfs_b', 'misc'))
     ap.add_argument('mode', choices=('identical', 'write', 'restore'))
     ap.add_argument('--write', action='store_true')
     ap.add_argument('--backup', type=Path, default=DEFAULT_BACKUP)
@@ -212,8 +225,11 @@ def main():
         args.base_dir.resolve(strict=True) if args.base_dir else None)
     rootfs_a_sha = identity['rootfs_a']
     # rootfs_a sessions use this unit's pins from its backup; misc sessions stay on the first unit's pins (not supported elsewhere)
-    specs = {'rootfs_a': spec if args.target == 'rootfs_a' else session.rootfs_a_spec(rootfs_a_sha, identity['base'], identity['base_head']),
-             'misc': session.misc_spec(rootfs_a_sha)}
+    if args.target == 'rootfs_b':  # its priors are rootfs_b runs; no rootfs_a or misc spec is involved
+        specs = {'rootfs_b': spec}
+    else:
+        specs = {'rootfs_a': spec if args.target == 'rootfs_a' else session.rootfs_a_spec(rootfs_a_sha, identity['base'], identity['base_head']),
+                 'misc': session.misc_spec(rootfs_a_sha)}
     priors = {}
     for flag, target, mode, verified in wanted:
         # Every prior is bound to this unit, host, tools and the same approved rootfs_a image (from the manifest, not a receipt).
@@ -222,7 +238,9 @@ def main():
     check_no_ssh(args.no_ssh, args.target, args.mode, spec)
     check_no_uart(args.no_uart, args.target, args.uart_log)
     print(f'{args.mode}: {args.target} only at {spec.addr:#x}, {spec.size:#x} bytes; candidate {spec.candidate_sha[:12]}; no reboot or retry')
-    if spec.base_head:
+    if spec.base_head and not spec.base_sha:
+        print(f'{spec.name} is rewritten whole; before the write only its first {spec.base_head:#x} bytes (layout + rootfs) must match the backup, the overlay tail is live')
+    elif spec.base_head:
         print(f'base mode: before the write only the first {spec.base_head:#x} bytes (layout + rootfs) must match base {spec.base_sha[:12]}; the whole partition, overlay included, is replaced')
     if not args.write:
         print('OFFLINE DRY RUN: no SSH, hardware import, USB command or write; execution gates not checked')

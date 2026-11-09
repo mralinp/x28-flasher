@@ -56,6 +56,12 @@ def validate_rootfs_a(original, candidate):
     inspect_ubi(candidate)  # UBI headers, volumes, geometry and SquashFS/UBIFS checks from the build tooling
 
 
+def validate_rootfs_b(original, candidate):
+    if len(candidate) != 0x4000000 or candidate == original:
+        raise ValueError('rootfs_b candidate must be a different 64 MiB image')
+    inspect_ubi(candidate)
+
+
 def validate_misc(original, candidate):
     expected = bytearray(original)
     for off in MISC_COPIES:
@@ -95,6 +101,15 @@ def unit_pins(images, boot_order=True):
             'rootfs_b_head': digest(images['rootfs_b'][:ROOTFS_B_HEAD]), 'misc': digest(misc), 'boot_para': digest(images['boot_para'])}
 
 
+def misc_boots_b(misc):
+    """True when all four misc copies are one record in which slot B has the higher priority (stock, or a native unit that booted B).
+    Record: magic, four 0xff, then per slot priority, tries, success, up-type (A at +8, B at +12); the preloader boots the higher priority."""
+    if len(misc) != 0x100000 or len({misc[off:off + 16] for off in MISC_COPIES}) != 1:
+        return False
+    rec = misc[MISC_COPIES[0]:MISC_COPIES[0] + 16]
+    return rec[:8] == b'\x00AB0\xff\xff\xff\xff' and rec[12] > rec[8]
+
+
 def common_guards(pins=FIRST_UNIT):
     return (('boot_a', 0x11500000, 0x2000000, BOOT_SHA), ('rootfs_sig_a', 0x13500000, 0x100000, ROOTFS_SIG),
             ('rootfs_sig_b', 0x1fb00000, 0x100000, ROOTFS_SIG), ('boot_para', 0x8e00000, 0x200000, pins['boot_para']),
@@ -120,6 +135,20 @@ def rootfs_a_spec(candidate_sha, base_sha='', base_head=0, pins=FIRST_UNIT):
         raise ValueError('base head must be a whole number of erase blocks inside rootfs_a, with a base')
     guards = (*common_guards(pins), ('misc', 0x700000, 0x100000, None if base_sha else pins['misc']))
     return Spec('rootfs_a', 0x13600000, 0x4000000, pins['rootfs_a'], guards, validate_rootfs_a, candidate_sha, guards, base_sha, base_head)
+
+
+def rootfs_b_spec(candidate_sha, pins=FIRST_UNIT):
+    """Write rootfs_b, the slot a stock unit boots (#89): over DL, no misc write and no SSH, so the unit's next power-up runs the new image.
+
+    Slot A stays what the backup holds (the stock clone the preloader falls back to) and is a guard, as are the boot chain, the modem
+    side and misc, which must still be the backup's stock B-selected record (the USB read stands in for SSH). Only the static head of rootfs_b is compared before the write: a booted slot
+    rewrites its overlay tail. `restore` writes the backup's rootfs_b back (stock B).
+    """
+    if len(candidate_sha) != 64 or candidate_sha in (pins['rootfs_a'], pins['rootfs_b']):
+        raise ValueError('rootfs_b candidate hash must be a new SHA-256')
+    guards = (*(g for g in common_guards(pins) if g[0] != 'rootfs_b'), ('rootfs_a', 0x13600000, 0x4000000, pins['rootfs_a']),
+              ('misc', 0x700000, 0x100000, pins['misc']))  # the backup's stock B-selected record: proves over USB that B is the slot that boots
+    return Spec('rootfs_b', 0x1fc00000, 0x4000000, pins['rootfs_b'], guards, validate_rootfs_b, candidate_sha, guards, '', ROOTFS_B_HEAD)
 
 
 def misc_spec(rootfs_a_sha):
