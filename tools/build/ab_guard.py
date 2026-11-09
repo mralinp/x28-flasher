@@ -55,7 +55,7 @@ def upgrade_problems(tree):
         if name in UPGRADE_PINNED:
             if hashlib.sha256(data).hexdigest() != UPGRADE_PINNED[name]:bad.append(name + ' (differs from the reviewed OpenWrt 23.05.5 file)')
         elif name == PLATFORM:
-            extra = {m.decode().strip() for m in FORBIDDEN.findall(data)} - PLATFORM_TOKENS
+            extra = {m.decode().strip(' \t\r\n;&|`(') for m in FORBIDDEN.findall(data)} - PLATFORM_TOKENS  # the regex keeps the delimiter before a word, e.g. a backtick in a comment
             if extra:bad.append(name + ' (names ' + ', '.join(sorted(extra)) + ')')
         else:bad.append(name)
     return bad

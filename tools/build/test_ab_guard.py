@@ -80,6 +80,8 @@ class GuardTests(unittest.TestCase):
             platform=b'#!/bin/sh\nRAMFS_COPY_BIN="/usr/sbin/ubiformat"\nplatform_do_upgrade(){ ubiformat x; dd-nand of=y; ubiattach; ubidetach; }\n'
             ok={**BASE,**pinned,'lib/upgrade/platform.sh':platform,'lib/upgrade/keep.d/base-files':b'/etc/config/\n'}
             g.check(tree(ok,LINK))  # as reviewed
+            commented=platform+b"# `sysupgrade -F` is the override; (sysupgrade ...) and ;sysupgrade x\n"  # delimiters before the word
+            g.check(tree({**ok,'lib/upgrade/platform.sh':commented},LINK))
             with self.subTest('changed stock file'),self.assertRaises(ValueError):
                 g.check(tree({**ok,'lib/upgrade/common.sh':pinned['lib/upgrade/common.sh']+b'mtd write\n'},LINK))
             for label,bad in (('nandwrite',platform+b'nandwrite /dev/mtd1 f\n'),('flash_erase',platform+b'flash_erase /dev/mtd1 0 0\n'),
