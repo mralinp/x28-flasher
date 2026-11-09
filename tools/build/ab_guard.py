@@ -6,6 +6,7 @@ uci-defaults) through every /etc|/lib|/usr|/sbin|/bin path they mention. Text on
 a binary never writes flash.
 """
 import argparse
+import hashlib
 import io
 import posixpath
 import re
@@ -36,6 +37,31 @@ def user_data_exempt(real, data):
             and b'"user_data"$/' in data)
 
 
+# The reviewed sysupgrade path (#81, zlt-x28-openwrt #154/#457/#465). OpenWrt's own sysupgrade stage 2 (common.sh, do_stage2, fwtool.sh of
+# 23.05.5, pinned by hash) plus our platform.sh, which may name only the tokens below. None of them may be reachable from boot: the boot
+# scan still reports them if any boot script mentions them. keep.d only lists files to back up.
+UPGRADE_PINNED = {'lib/upgrade/common.sh': 'c33b304881f13b55684e41d852835f885798fe752a1c075c6b9588b6174af16d',
+                  'lib/upgrade/do_stage2': 'b849b405446a5e6b1467d67bdd712e3ade9d215c78cf2bf80264914e21dfeed3',
+                  'lib/upgrade/fwtool.sh': 'f23a709e142752887e7982a9783a9f6861fb763c642d3cf3121200f06ad1c974'}
+PLATFORM = 'lib/upgrade/platform.sh'
+PLATFORM_TOKENS = {'sysupgrade', 'dd-nand', 'platform_do_upgrade', 'ubiattach', 'ubidetach', 'ubiformat'}
+
+
+def upgrade_problems(tree):
+    """Files under lib/upgrade that are not exactly the reviewed ones, and platform.sh tokens beyond the reviewed set."""
+    bad = []
+    for name in sorted(n for n in tree if n.startswith('lib/upgrade/') and not n.startswith('lib/upgrade/keep.d/')):
+        info, data = tree[name]
+        if not info.isfile():bad.append(name + ' (not a regular file)');continue
+        if name in UPGRADE_PINNED:
+            if hashlib.sha256(data).hexdigest() != UPGRADE_PINNED[name]:bad.append(name + ' (differs from the reviewed OpenWrt 23.05.5 file)')
+        elif name == PLATFORM:
+            extra = {m.decode().strip() for m in FORBIDDEN.findall(data)} - PLATFORM_TOKENS
+            if extra:bad.append(name + ' (names ' + ', '.join(sorted(extra)) + ')')
+        else:bad.append(name)
+    return bad
+
+
 PATHS = re.compile(rb'(?<![\w.-])/((?:etc|lib|usr|sbin|bin)/[A-Za-z0-9_./-]*[A-Za-z0-9_])')
 ROOT_PREFIXES = ('etc/rc.d/','etc/hotplug.d/','etc/crontabs/','etc/uci-defaults/','lib/preinit/')
 ROOT_FILES = ('etc/inittab','etc/rc.local','etc/preinit','etc/rc.common','etc/init.d/rcS')
@@ -64,7 +90,7 @@ def violations(tree):
 def check(tree):
     bad,seen=violations(tree)
     if bad:raise ValueError('boot-reachable flash/slot writer reference: '+'; '.join(f'{n}: {t}' for n,t in bad))
-    extra=[n for n in tree if n.startswith('lib/upgrade/') or 'zmtk_boot_done' in n]
+    extra=upgrade_problems(tree)+[n for n in tree if 'zmtk_boot_done' in n]
     if extra:raise ValueError('upgrade/A-B sync path present: '+', '.join(sorted(extra)))
     return seen
 

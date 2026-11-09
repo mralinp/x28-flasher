@@ -71,5 +71,31 @@ class GuardTests(unittest.TestCase):
         other=script.replace(b'x28-bootok',b'x28-other')  # same text, any other name: refused
         with self.assertRaises(ValueError):g.check(tree({**BASE,'etc/init.d/x28-other':other},LINK+[('etc/rc.d/S96x28-other','../init.d/x28-other')]))
 
+    def test_only_the_reviewed_sysupgrade_files_may_be_present(self):
+        pinned={n:b'#!/bin/sh\n# stand-in for '+n.encode()+b'\n' for n in g.UPGRADE_PINNED}
+        import hashlib
+        real=dict(g.UPGRADE_PINNED)
+        try:
+            g.UPGRADE_PINNED.update({n:hashlib.sha256(d).hexdigest() for n,d in pinned.items()})
+            platform=b'#!/bin/sh\nRAMFS_COPY_BIN="/usr/sbin/ubiformat"\nplatform_do_upgrade(){ ubiformat x; dd-nand of=y; ubiattach; ubidetach; }\n'
+            ok={**BASE,**pinned,'lib/upgrade/platform.sh':platform,'lib/upgrade/keep.d/base-files':b'/etc/config/\n'}
+            g.check(tree(ok,LINK))  # as reviewed
+            with self.subTest('changed stock file'),self.assertRaises(ValueError):
+                g.check(tree({**ok,'lib/upgrade/common.sh':pinned['lib/upgrade/common.sh']+b'mtd write\n'},LINK))
+            for label,bad in (('nandwrite',platform+b'nandwrite /dev/mtd1 f\n'),('flash_erase',platform+b'flash_erase /dev/mtd1 0 0\n'),
+                              ('fw_setenv',platform+b'fw_setenv a b\n'),('mtd write',platform+b'mtd write a b\n'),('zmtk',platform+b'zmtk_boot_done\n'),
+                              ('ab sync',platform+b'ab_image_sync _a\n'),('mkvol',platform+b'ubimkvol /dev/ubi0\n')):
+                with self.subTest(label),self.assertRaises(ValueError):g.check(tree({**ok,'lib/upgrade/platform.sh':bad},LINK))
+            for extra in ('lib/upgrade/nand.sh','lib/upgrade/bootctrl.sh'):
+                with self.subTest(extra),self.assertRaises(ValueError):g.check(tree({**ok,extra:b'#!/bin/sh\n'},LINK))
+            boot={**ok,'etc/init.d/network':b'#!/bin/sh /etc/rc.common\nstart(){ . /lib/upgrade/platform.sh; }\n'}
+            with self.subTest('reachable from boot'),self.assertRaises(ValueError):g.check(tree(boot,LINK))
+        finally:
+            g.UPGRADE_PINNED.clear();g.UPGRADE_PINNED.update(real)
+
+    def test_the_pins_are_the_openwrt_23_05_5_files(self):
+        self.assertEqual(sorted(g.UPGRADE_PINNED),['lib/upgrade/common.sh','lib/upgrade/do_stage2','lib/upgrade/fwtool.sh'])
+        self.assertTrue(all(len(v)==64 for v in g.UPGRADE_PINNED.values()))
+
 
 if __name__=='__main__':unittest.main()
