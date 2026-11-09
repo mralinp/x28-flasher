@@ -96,7 +96,7 @@ class GuardTests(unittest.TestCase):
             g.UPGRADE_PINNED.clear();g.UPGRADE_PINNED.update(real)
 
     def test_the_pins_are_the_openwrt_23_05_5_files(self):
-        self.assertEqual(sorted(g.UPGRADE_PINNED),['lib/upgrade/common.sh','lib/upgrade/do_stage2','lib/upgrade/fwtool.sh'])
+        self.assertEqual(sorted(g.UPGRADE_PINNED),['lib/upgrade/common.sh','lib/upgrade/do_stage2','lib/upgrade/fwtool.sh','lib/upgrade/stage2'])
         self.assertTrue(all(len(v)==64 for v in g.UPGRADE_PINNED.values()))
 
 

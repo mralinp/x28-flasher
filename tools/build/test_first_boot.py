@@ -57,7 +57,7 @@ MODEM_SERVICES='1nvram_daemon 2ccci_fsd 3ccci_mdinit ql_ril_service ql_netd.init
 
 
 # Stand-ins for OpenWrt's reviewed stage 2 files: the real pins belong to the real files, so the test pins its own bytes.
-STAGE2={'lib/upgrade/common.sh':b'#!/bin/sh\n# stage 2 stand-in\n','lib/upgrade/do_stage2':b'#!/bin/sh\n# do_stage2 stand-in\n','lib/upgrade/fwtool.sh':b'#!/bin/sh\n# fwtool stand-in\n'}
+STAGE2={'lib/upgrade/common.sh':b'#!/bin/sh\n# stage 2 stand-in\n','lib/upgrade/do_stage2':b'#!/bin/sh\n# do_stage2 stand-in\n','lib/upgrade/fwtool.sh':b'#!/bin/sh\n# fwtool stand-in\n','lib/upgrade/stage2':b'#!/bin/sh\n# stage2 stand-in\n'}
 f.UPGRADE_PINNED.update({n:f.digest(d) for n,d in STAGE2.items()})
 
 

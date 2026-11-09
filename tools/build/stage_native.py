@@ -24,6 +24,7 @@ ROOTS = ['usr/bin/'+n for n in ('nvram_daemon','ccci_fsd','ccci_mdinit','mtk_net
 # The reviewed sysupgrade stage 2 files of OpenWrt 23.05.5 (#81): kept, by hash; everything else under lib/upgrade is still removed.
 UPGRADE_PINNED = {'lib/upgrade/common.sh': 'c33b304881f13b55684e41d852835f885798fe752a1c075c6b9588b6174af16d',
                   'lib/upgrade/do_stage2': 'b849b405446a5e6b1467d67bdd712e3ade9d215c78cf2bf80264914e21dfeed3',
+                  'lib/upgrade/stage2': 'c494d3cc230b30da3f5b44f6d5d97f2e05d5a4abb87259111375df69fb2c668c',
                   'lib/upgrade/fwtool.sh': 'f23a709e142752887e7982a9783a9f6861fb763c642d3cf3121200f06ad1c974'}
 
 
