@@ -310,7 +310,7 @@ class PolicyTests(unittest.TestCase):
         env={**os.environ,'PATH':f'{bin}:{os.environ["PATH"]}','FAKE_SW_STATE':str(self.root/'state'),
              'FAKE_SW_CONFIG':str(self.root/'network'),'FAKE_SW_MODE':mode}
         # /tmp marker path is rewritten so the test never touches the host's /tmp
-        script=script.replace('/tmp/x28-switch.failed',str(self.root/'failed'))
+        script=script.replace('/tmp/x28-switch.failed',(self.root/'failed').as_posix())  # sh on Windows reads backslashes as escapes
         return subprocess.run(['sh','-c',script+'\nstart'],env=env,capture_output=True,text=True)
 
     def test_init_passes_only_when_readback_matches(self):
