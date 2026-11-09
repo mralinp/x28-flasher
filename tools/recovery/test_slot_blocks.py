@@ -145,6 +145,8 @@ class BlockwiseTests(unittest.TestCase):
             self.assertEqual(self.journal()[-1]['status'], 'STOP_UNVERIFIED_NO_RETRY_OR_REBOOT')
             for p in self.out.glob('*'):
                 import shutil
+                for f in p.rglob('*'):
+                    f.chmod(0o600)  # the sources are made read-only, which Windows will not unlink
                 shutil.rmtree(p)
 
     def test_bad_inputs_refused_before_any_io(self):
