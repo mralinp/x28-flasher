@@ -81,7 +81,7 @@ FEED_PREFIXES = ("ipset_", "libipset13_", "x28-ipset-kernel_")  # always install
 # The packages an image carries (#420): ours, and the three module packages WireGuard and Passwall2 need. They are installed by
 # first_boot as real packages. The bundle holds every module package of the feed; the others are left for the user to install.
 PACKAGE_PREFIXES = ("x28-", "luci-proto-x28-mipc_", "kmod-wireguard_", "kmod-ipt-tproxy_", "kmod-ipt-socket_")
-STAGE_PREFIXES = ("alsa-lib_", "libstdcpp6_")  # OpenWrt packages the staging step installs
+STAGE_PREFIXES = ("alsa-lib_", "libstdcpp6_", "ucert_")  # OpenWrt packages the staging step installs
 
 
 def fetch_checked(url, want, dest, fetch=get):
