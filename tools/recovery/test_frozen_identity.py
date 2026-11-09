@@ -16,7 +16,7 @@ TEXT = "class DAXML:\n    pass  # patched\n"
 def bundle(commit=common.MTKCLIENT_COMMIT, text=TEXT, recorded=None):
     root = Path(tempfile.mkdtemp())
     (root / restore_entry.XML).parent.mkdir(parents=True)
-    (root / restore_entry.XML).write_text(text)
+    (root / restore_entry.XML).write_bytes(text.encode())  # no CRLF on Windows: the hash is of bytes
     sha = recorded or hashlib.sha256(TEXT.encode()).hexdigest()
     (root / 'identity.json').write_text(json.dumps({'commit': commit, 'xml_lib_sha256': sha}))
     return root
