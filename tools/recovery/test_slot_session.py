@@ -186,6 +186,7 @@ class MiscBootsBTests(unittest.TestCase):
         self.assertTrue(s.misc_boots_b(self.misc(bytes.fromhex('0e000000'), bytes.fromhex('0f000100'))))  # a native unit that booted B
         self.assertFalse(s.misc_boots_b(self.misc(bytes.fromhex('0f000000'), bytes.fromhex('0e000100'))))  # A first
         self.assertFalse(s.misc_boots_b(self.misc(bytes.fromhex('0f000000'), bytes.fromhex('0f000100'))))  # a tie goes to A
+        self.assertFalse(s.misc_boots_b(self.misc(bytes.fromhex('0e000101'), bytes.fromhex('0f060101'))))  # B out of tries
         mixed = bytearray(self.misc(bytes.fromhex('0e000101'), bytes.fromhex('0f000101')))
         mixed[s.MISC_COPIES[2] + 12] = 0x0d
         self.assertFalse(s.misc_boots_b(bytes(mixed)))

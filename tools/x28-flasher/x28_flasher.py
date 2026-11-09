@@ -132,11 +132,12 @@ def stop_capture():
 
 
 def flash_cmd(args, uart, backup_copy):
-    cmd = ["rootfs_a", args.mode, "--write", *tool_paths(args), "--candidate-dir", args.candidate_dir]
+    slot = getattr(args, "slot", None) or "a"  # #89: B is the slot a stock unit boots; written over DL with misc untouched
+    cmd = [f"rootfs_{slot}", args.mode, "--write", *tool_paths(args), "--candidate-dir", args.candidate_dir]
     cmd += ["--backup-copy", str(backup_copy)] if backup_copy else []
     cmd += ["--no-uart"] if getattr(args, "no_uart", False) else ["--uart-log", str(uart)]
     for flag in ("base_dir", "prior_identical"):
-        if getattr(args, flag):
+        if getattr(args, flag) and not (flag == "base_dir" and slot == "b"):
             cmd += ["--" + flag.replace("_", "-"), getattr(args, flag)]
     if getattr(args, "no_ssh", False):
         cmd.append("--no-ssh")
@@ -254,6 +255,8 @@ def selftest():
     assert cmd[-4:] == ["--base-dir", "B", "--prior-identical", "P"] and "--write" in cmd and "rootfs_a" in cmd
     assert "--base-dir" not in flash_cmd(argparse.Namespace(mode="identical", candidate_dir="C", base_dir=None, prior_identical=None, backup="Bk", loader="L"),
                                          Path("u"), Path("b"))
+    b = flash_cmd(argparse.Namespace(mode="write", candidate_dir="C", base_dir="B", prior_identical=None, backup="Bk", loader="L", slot="b"), Path("u"), Path("b"))
+    assert b[0] == "rootfs_b" and "--base-dir" not in b  # #89: slot B is written from the backup, never from a base image
     asked = []
     power_off_countdown(2, ask=asked.append, sleep=lambda _: None)
     assert len(asked) == 1
@@ -295,6 +298,7 @@ def main():
     f.add_argument("mode", choices=("identical", "write"))
     f.add_argument("--candidate-dir", required=True)
     f.add_argument("--base-dir")
+    f.add_argument("--slot", choices=("a", "b"), default="a", help="a: the image slot (default); b: the slot a stock unit boots, written over DL (no SSH, misc untouched)")
     f.add_argument("--prior-identical")
     f.add_argument("--backup-copy")
     f.add_argument("--backup")

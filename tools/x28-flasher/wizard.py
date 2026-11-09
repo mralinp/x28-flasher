@@ -368,7 +368,7 @@ def flash(fl, ui, cfg, preset=None):
     given = json.loads(os.environ["X28_FLASH"]) if os.environ.get("X28_FLASH") else None  # the page's form: only the typed phrase is asked
     if given:
         backup, loader = given["backup"], given["loader"]
-        preset = {k: given.get(k) for k in ("mode", "candidate", "base", "no_ssh", "no_uart")}
+        preset = {k: given.get(k) for k in ("mode", "candidate", "base", "no_ssh", "no_uart", "slot")}
     else:
         backup = ask_path(ui, cfg, "backup", "Folder with your verified backup", DEFAULT_BACKUP, True)
         loader = ask_path(ui, cfg, "loader", "Vendor download agent file (DA_BR.bin)", VENDOR_DA, False)
@@ -378,7 +378,8 @@ def flash(fl, ui, cfg, preset=None):
     images = [(d.name, str(d)) for d in image_dirs(PRIVATE / "build")]
     candidate = preset.get("candidate") or (ui.select("Image to flash", images + [("Another folder...", None)]) if images else None)
     candidate = candidate or ui.text("Folder with the image (package_ubi output)")
-    base = preset["base"] if "base" in preset else ui.select("Image now on slot A (the base)", [("None / not known", None)] + images + [("Another folder...", "other")])
+    slot = preset.get("slot") or "a"
+    base = None if slot == "b" else preset["base"] if "base" in preset else ui.select("Image now on slot A (the base)", [("None / not known", None)] + images + [("Another folder...", "other")])
     if base == "other":
         base = ui.text("Folder of the image now on slot A")
     no_ssh = bool(preset["no_ssh"] if "no_ssh" in preset else (not base and ui.confirm(
@@ -398,7 +399,7 @@ def flash(fl, ui, cfg, preset=None):
     if not given and not ui.confirm("Continue to the UART and the typed confirmation?", True):
         return 0
     args = argparse.Namespace(mode=mode, candidate_dir=candidate, base_dir=base, prior_identical=prior,
-                              backup_copy=given.get("copy") if given else None, backup=backup, loader=loader, no_ssh=no_ssh, no_uart=no_uart)
+                              backup_copy=given.get("copy") if given else None, backup=backup, loader=loader, no_ssh=no_ssh, no_uart=no_uart, slot=slot)
     code = fl.cmd_flash(args, ui)
     print("  " + (good("Done.") if code == 0 else bad(f"Stopped (exit {code}). The run folder above keeps the logs; nothing was retried.")))
     return code

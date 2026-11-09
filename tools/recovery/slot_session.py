@@ -107,7 +107,7 @@ def misc_boots_b(misc):
     if len(misc) != 0x100000 or len({misc[off:off + 16] for off in MISC_COPIES}) != 1:
         return False
     rec = misc[MISC_COPIES[0]:MISC_COPIES[0] + 16]
-    return rec[:8] == b'\x00AB0\xff\xff\xff\xff' and rec[12] > rec[8]
+    return rec[:8] == b'\x00AB0\xff\xff\xff\xff' and rec[12] > rec[8] and rec[13] < 6  # and B has tries left (the preloader switches slots at 6)
 
 
 def common_guards(pins=FIRST_UNIT):

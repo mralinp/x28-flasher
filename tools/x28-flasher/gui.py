@@ -283,8 +283,8 @@ def build_command(fl, action, params, loader):
     if action == "flash":
         import wizard
         from common import PRIVATE, slot_tools_digest
-        if str(params.get("slot") or "a") != "a":
-            raise ValueError("slot B is locked: only slot A can be flashed with this build")
+        if str(params.get("slot") or "a") not in ("a", "b"):
+            raise ValueError("choose slot A or slot B")
         if params.get("mode") not in ("identical", "write"):
             raise ValueError("choose a rehearsal or the write")
         if not (Path(str(params.get("candidate") or "")) / "rootfs-a-experimental.bin").is_file():
@@ -363,7 +363,7 @@ class App:
                 self.config().set("backup", str(params["out"]).strip())  # Build looks for finished backups here, and beside the usual places
             env = {"X28_RECOVERY": str(self.fl.RECOVERY)}
             if action == "flash":
-                env["X28_FLASH"] = json.dumps({**{k: str(params.get(k) or "") or None for k in ("mode", "candidate", "backup", "copy", "prior")},
+                env["X28_FLASH"] = json.dumps({**{k: str(params.get(k) or "") or None for k in ("mode", "candidate", "backup", "copy", "prior", "slot")},
                                                "base": None, "no_ssh": True, "no_uart": True, "loader": loader})  # a flash needs neither SSH nor a UART log
             if action == "build":
                 env["X28_BUILD"] = json.dumps({k: str(params[k]) for k in ("backup", "tag")})

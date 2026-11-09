@@ -436,8 +436,8 @@ function flashForm() {
   return `<div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
     <div><span class="lbl">Slot to flash</span>
       <div style="display:flex;gap:10px;margin-top:6px;flex-wrap:wrap">
-        <label class="chk" style="border:1px solid var(--acc);border-radius:10px;padding:10px 14px"><input type="radio" name="fl-slot" value="a" checked><span><b>Slot A</b> · the image slot. Stock stays on slot B as the fallback.</span></label>
-        <label class="chk" style="border:1px solid var(--line);border-radius:10px;padding:10px 14px;opacity:.55"><input type="radio" name="fl-slot" value="b" disabled><span><b>Slot B</b> · locked. A full image there would replace the stock firmware; it needs its own reviewed tool.</span></label>
+        <label class="chk" style="border:1px solid var(--acc);border-radius:10px;padding:10px 14px"><input type="radio" name="fl-slot" value="a" checked><span><b>Slot A</b> · the image slot. Stock stays on slot B as the fallback. Needs the Boot order step afterwards.</span></label>
+        <label class="chk" style="border:1px solid var(--line);border-radius:10px;padding:10px 14px"><input type="radio" name="fl-slot" value="b"><span><b>Slot B</b> · the slot the modem boots now. Replaces what runs there, needs no SSH and no Boot order step; the backup must show the modem booting B, and slot A (stock) stays as the fallback.</span></label>
       </div></div>
     <label class="f"><span class="lbl">Image to flash</span><select id="fl-image">${optionList(b.images, imageLabel)}</select></label>
     <label class="f"><span class="lbl">Backup of this unit</span><span style="display:flex;gap:8px"><select id="fl-backup">${optionList(b.backups, (v) => v)}</select><button type="button" class="btn" data-act="browse" data-target="fl-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
@@ -596,7 +596,7 @@ document.addEventListener("click", async (e) => {
     S.job = null;
     const params = { accept: true };
     if (t.dataset.run === "flash") {
-      Object.assign(params, { slot: "a", candidate: $("#fl-image").value, backup: $("#fl-backup").value, mode: $("#fl-rehearse").checked ? "identical" : "write", prior: $("#fl-prior")?.value || "" });
+      Object.assign(params, { slot: (document.querySelector("input[name=fl-slot]:checked") || {}).value || "a", candidate: $("#fl-image").value, backup: $("#fl-backup").value, mode: $("#fl-rehearse").checked ? "identical" : "write", prior: $("#fl-prior")?.value || "" });
     }
     return openPower(t.dataset.run, params);  // Power off and 10 s first; the job starts when they end
   }
