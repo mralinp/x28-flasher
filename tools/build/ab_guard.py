@@ -61,6 +61,26 @@ def upgrade_problems(tree):
     return bad
 
 
+# The third (#98, zlt-x28-openwrt #515): x28-upgrade runs sysupgrade when the owner types it or presses LuCI's Upgrade button. It is
+# "reachable" only because boot scripts name /usr/sbin in PATH. The exemption covers only the sysupgrade token and only that file, and
+# only while nothing else in the image names it (a boot root, a helper it calls, a button script) or links to it, except its own LuCI
+# view and rpcd ACL and opkg's records. Text only: a name built from variables is not seen.
+UPGRADE = 'usr/sbin/x28-upgrade'
+UPGRADE_NAME = re.compile(rb'(?<![\w.-])x28-upgrade(?![\w.-])')  # not /tmp/x28-upgrade-ok, x28-upgrade.log
+UPGRADE_CALLERS = {UPGRADE, 'usr/share/rpcd/acl.d/x28-update.json', 'www/luci-static/resources/view/status/include/05_x28update.js'}
+
+
+def upgrade_exempt(real, tree):
+    if real != UPGRADE:return False
+    for n, (info, data) in tree.items():
+        if info.issym():
+            try:
+                if resolve(tree, n)[0] == UPGRADE:return False
+            except ValueError:pass
+        elif n not in UPGRADE_CALLERS and not n.startswith('usr/lib/opkg/') and UPGRADE_NAME.search(data):return False
+    return True
+
+
 PATHS = re.compile(rb'(?<![\w.-])/((?:etc|lib|usr|sbin|bin)/[A-Za-z0-9_./-]*[A-Za-z0-9_])')
 ROOT_PREFIXES = ('etc/rc.d/','etc/hotplug.d/','etc/crontabs/','etc/uci-defaults/','lib/preinit/')
 ROOT_FILES = ('etc/inittab','etc/rc.local','etc/preinit','etc/rc.common','etc/init.d/rcS')
@@ -79,6 +99,7 @@ def violations(tree):
         for hit in sorted({m.decode() for m in FORBIDDEN.findall(data)}):
             if hit=='dd-nand' and bootok_exempt(real,data):continue
             if hit=='ubiattach' and user_data_exempt(real,data):continue
+            if hit.strip(' \t\r\n;&|`(')=='sysupgrade' and upgrade_exempt(real,tree):continue
             found.append((real,hit))
         for ref in PATHS.findall(data):
             ref=posixpath.normpath(ref.decode())

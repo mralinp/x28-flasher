@@ -71,6 +71,25 @@ class GuardTests(unittest.TestCase):
         other=script.replace(b'x28-bootok',b'x28-other')  # same text, any other name: refused
         with self.assertRaises(ValueError):g.check(tree({**BASE,'etc/init.d/x28-other':other},LINK+[('etc/rc.d/S96x28-other','../init.d/x28-other')]))
 
+    def test_x28_upgrade_may_name_sysupgrade_only_while_nothing_at_boot_starts_it(self):
+        script=(ROOT/'package/x28-update/files/x28-upgrade').read_bytes()
+        boot={**BASE,'etc/init.d/network':b'#!/bin/sh /etc/rc.common\nPATH=/usr/sbin:/bin\n'}  # a PATH makes all of /usr/sbin reachable
+        name='usr/sbin/x28-upgrade'
+        ok={name:script,'usr/share/rpcd/acl.d/x28-update.json':b'"/usr/sbin/x28-upgrade -y -b": [ "exec" ]',
+            'usr/lib/opkg/info/x28-update.list':b'/usr/sbin/x28-upgrade\n','etc/x':b'/tmp/x28-upgrade-ok /tmp/x28-upgrade.log'}
+        self.assertIn(name,g.check(tree({**boot,**ok},LINK)))  # as shipped, with the mentions that are allowed
+        for label,files in (('other writer',{name:script+b'\nmtd write x rootfs\n'}),
+                            ('same text, other name',{'usr/sbin/x28-other':script}),
+                            ('started by an init script',{name:script,'etc/init.d/x28-auto':b'#!/bin/sh /etc/rc.common\nstart(){ x28-upgrade -y; }\n'}),
+                            ('started by cron',{name:script,'etc/crontabs/root':b'0 4 * * * /usr/sbin/x28-upgrade -y\n'}),
+                            ('started by hotplug',{name:script,'etc/hotplug.d/iface/99-x':b'#!/bin/sh\nx28-upgrade -y\n'}),
+                            ('started by a helper',{name:script,'usr/libexec/h':b'#!/bin/sh\nx28-upgrade -y\n',
+                                                    'etc/init.d/network':b'#!/bin/sh /etc/rc.common\nPATH=/usr/sbin:/bin\n/usr/libexec/h\n'}),
+                            ('started by a button',{name:script,'etc/rc.button/reset':b'#!/bin/sh\n/usr/sbin/x28-upgrade -y\n'})):
+            with self.subTest(label),self.assertRaises(ValueError):g.check(tree({**boot,**files},LINK))
+        alias=tree({**boot,name:script,'etc/init.d/network':b'#!/bin/sh /etc/rc.common\nPATH=/usr/sbin:/bin\nupg -y\n'},LINK+[('usr/sbin/upg','x28-upgrade')])
+        with self.subTest('symlink alias'),self.assertRaises(ValueError):g.check(alias)
+
     def test_only_the_reviewed_sysupgrade_files_may_be_present(self):
         pinned={n:b'#!/bin/sh\n# stand-in for '+n.encode()+b'\n' for n in g.UPGRADE_PINNED}
         import hashlib
