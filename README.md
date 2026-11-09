@@ -142,7 +142,7 @@ Build again after every `git pull`; `dist/`, `bh/` and `private/` are ignored by
 |---|---|
 | `tools/recovery/` | backup and verify, mtkclient setup, USB reads, guarded flash sessions. Hash-bound: do not edit mid-chain |
 | `tools/x28-flasher/` | the page (`gui/`), terminal wizard, app and PyInstaller builds |
-| `tools/build/` | image assembly: `stage_native.py`, `first_boot.py`, `ab_guard.py`, `package_ubi.py`, `stock_access.py` |
+| `tools/build/` | image assembly: `stage_native.py`, `first_boot.py`, `ab_guard.py`, `package_ubi.py`, `sysupgrade_tar.py` (the unsigned sysupgrade tarball), `stock_access.py` |
 | `tools/firmware/` | the tools container and partition inventory |
 | `docs/` | [manual](docs/USAGE.md), assets |
 
