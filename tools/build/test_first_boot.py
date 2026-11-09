@@ -202,7 +202,7 @@ class PolicyTests(unittest.TestCase):
             path.write_bytes(tgz([('./debian-binary',b'2.0\n'),('./data.tar.gz',tgz(list(files))),
                                   ('./control.tar.gz',tgz([('./control',f'Package: {name}\nVersion: 1\nArchitecture: all\n'.encode())]+list(extra)))]))
             return path
-        inits=[ipk(n,[(f'./etc/init.d/{n}',f'#!/bin/sh /etc/rc.common\nSTART={s}\n'.encode())],[('./prerm',b'#!/bin/sh\nexit 0\n')])
+        inits=[ipk(n,[(f'./etc/init.d/{n}',f'#!/bin/sh /etc/rc.common\nSTART={s}\n'.encode())]+([('./etc/board.json',b'{"switch":{}}\n')] if n=='x28-switch' else []),[('./prerm',b'#!/bin/sh\nexit 0\n')])
                for n,s in (('x28-modem',19),('x28-leds',99),('x28-bootok',96),('x28-dhcp',96),('x28-wps',97),('x28-wifi-l1','05'),('x28-kmods',97),('x28-switch',18))]
         storage=ipk('x28-storage',[('./etc/config/fstab',b'mine\n')],[('./conffiles',b'/etc/config/fstab\n')])
         mods=self.root/'mods';mods.mkdir();(mods/'wireguard.ko').write_bytes(b'wg')
@@ -214,6 +214,7 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(tree['etc/rc.d/S97x28-kmods'][0].linkname,'../init.d/x28-kmods')
         self.assertEqual(tree['etc/init.d/x28-switch'][1],b'#!/bin/sh /etc/rc.common\nSTART=18\n');self.assertEqual(tree['etc/rc.d/S18x28-switch'][0].linkname,'../init.d/x28-switch')  # the package's script, not the generated one
         self.assertIn('usr/lib/opkg/info/x28-leds.prerm',tree)
+        self.assertEqual(tree['etc/board.json'][1],b'{"switch":{}}\n');self.assertIn('/etc/board.json\n',tree['usr/lib/opkg/info/x28-switch.list'][1].decode())  # LuCI's switch layout comes with the x28-switch package (#93)
         self.assertNotIn('lib/modules/x28/wireguard.ko',tree)  # the loose --kmods are ignored: kmod-wireguard comes as a package
         self.assertNotIn('Package: kmod-wireguard',status)
 
