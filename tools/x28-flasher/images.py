@@ -11,7 +11,7 @@ from pathlib import Path
 
 REPO = "mralinp/zlt-x28-openwrt"
 ARCHIVE = "x28-native-image.tar.gz"  # holds exactly manifest.json and rootfs-a-experimental.bin, the package_ubi output Flash reads
-SUMS = "sha256sums"
+SUMS = "SHA256SUMS"  # the release's one checksum file (asset names are case-insensitive, zlt-x28-openwrt#254)
 FILES = ("manifest.json", "rootfs-a-experimental.bin")
 
 
