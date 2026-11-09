@@ -56,6 +56,11 @@ else:sys.exit(2)
 MODEM_SERVICES='1nvram_daemon 2ccci_fsd 3ccci_mdinit ql_ril_service ql_netd.init mipc_submonitor.init atci_service atcid'.split()
 
 
+# Stand-ins for OpenWrt's reviewed stage 2 files: the real pins belong to the real files, so the test pins its own bytes.
+STAGE2={'lib/upgrade/common.sh':b'#!/bin/sh\n# stage 2 stand-in\n','lib/upgrade/do_stage2':b'#!/bin/sh\n# do_stage2 stand-in\n','lib/upgrade/fwtool.sh':b'#!/bin/sh\n# fwtool stand-in\n'}
+f.UPGRADE_PINNED.update({n:f.digest(d) for n,d in STAGE2.items()})
+
+
 class PolicyTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
@@ -72,7 +77,7 @@ class PolicyTests(unittest.TestCase):
                               'etc/uci-defaults/99-unsafe':b'mtd write', 'etc/rc.local':b'mtd write',
                               'etc/fstab':b'/dev/other /data ubifs rw 0 0',
                               'etc/rc.d/S99zmtk_boot_done':b'unsafe', 'etc/board.d/02_network':b'generic',
-                              'lib/upgrade/platform.sh':b'unsafe', 'lib/preinit/99_10_failsafe_login':b'ash --login', 'lib/preinit/00_preinit.conf':b'pi_preinit_no_failsafe=""\n','lib/libc.so':b'musl','bin/ash':b'busybox'}.items():put(t,name,data)
+                              'lib/upgrade/platform.sh':b'unsafe', 'lib/preinit/79_move_config':b'. /lib/upgrade/common.sh', **STAGE2, 'lib/preinit/99_10_failsafe_login':b'ash --login', 'lib/preinit/00_preinit.conf':b'pi_preinit_no_failsafe=""\n','lib/libc.so':b'musl','bin/ash':b'busybox'}.items():put(t,name,data)
             m=tarfile.TarInfo('etc/rc.d/S19dropbear');m.type=tarfile.SYMTYPE;m.linkname='../init.d/dropbear';t.addfile(m)
             m=tarfile.TarInfo('etc/rc.d/S20network');m.type=tarfile.SYMTYPE;m.linkname='../init.d/network';t.addfile(m)
         (self.stage/'manifest.json').write_text(json.dumps({'flashable':False,'archive_sha256':f.digest(self.archive.read_bytes())}))
@@ -96,7 +101,9 @@ class PolicyTests(unittest.TestCase):
         r=f.integrate(self.stage,self.key,self.stock,self.output)
         tree=f.load_archive(self.output/'rootfs-management.tar.gz')
         self.assertNotIn('etc/rc.d/S99zmtk_boot_done',tree)
-        self.assertNotIn('lib/upgrade/platform.sh',tree)
+        self.assertNotEqual(tree['lib/upgrade/platform.sh'][1],b'unsafe') if 'lib/upgrade/platform.sh' in tree else None  # the stock one is gone; ours comes from the bundle
+        self.assertNotIn('lib/preinit/79_move_config',tree)
+        for stage2 in STAGE2:self.assertIn(stage2,tree)
         self.assertNotIn('etc/uci-defaults/99-unsafe',tree)
         self.assertNotIn('lib/preinit/99_10_failsafe_login',tree)
         self.assertIn(b'pi_preinit_no_failsafe="y"',tree['lib/preinit/00_preinit.conf'][1])

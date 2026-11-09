@@ -295,7 +295,8 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
     for name in list(tree):
         if name in UPGRADE_PINNED and digest(tree[name][1])==UPGRADE_PINNED[name]:continue  # the reviewed stage 2 (#81)
         if (name.startswith(('etc/rc.d/','etc/uci-defaults/','etc/board.d/','lib/upgrade/','etc/dropbear/'))
-            or 'zmtk_boot_done' in name or (name.startswith('lib/preinit/') and 'failsafe' in name)):
+            or 'zmtk_boot_done' in name or name=='lib/preinit/79_move_config'  # sources /lib/upgrade/common.sh at boot (#81); only for block-device boots
+            or (name.startswith('lib/preinit/') and 'failsafe' in name)):
             keep=name.startswith('etc/rc.d/') and name.split('/')[-1] in ALLOWED_START|ALLOWED_STOP
             if keep:
                 meta=tree[name][0];service=name.split('/')[-1][3:]
