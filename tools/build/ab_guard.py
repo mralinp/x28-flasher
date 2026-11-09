@@ -47,6 +47,8 @@ PLATFORM_TOKENS = {'sysupgrade', 'dd-nand', 'platform_do_upgrade', 'ubiattach', 
 def upgrade_problems(tree):
     """Files under lib/upgrade that are not exactly the reviewed ones, and platform.sh tokens beyond the reviewed set."""
     bad = []
+    if PLATFORM in tree and not all(n in tree for n in UPGRADE_PINNED):  # e.g. the pins went stale with a newer OpenWrt: fail, don't ship a dead sysupgrade
+        bad.append(PLATFORM + ' without all of the pinned stage 2 files: ' + ', '.join(sorted(n for n in UPGRADE_PINNED if n not in tree)))
     for name in sorted(n for n in tree if n.startswith('lib/upgrade/') and not n.startswith('lib/upgrade/keep.d/')):
         info, data = tree[name]
         if not info.isfile():bad.append(name + ' (not a regular file)');continue

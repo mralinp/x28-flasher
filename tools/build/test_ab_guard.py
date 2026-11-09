@@ -88,6 +88,8 @@ class GuardTests(unittest.TestCase):
                 with self.subTest(label),self.assertRaises(ValueError):g.check(tree({**ok,'lib/upgrade/platform.sh':bad},LINK))
             for extra in ('lib/upgrade/nand.sh','lib/upgrade/bootctrl.sh'):
                 with self.subTest(extra),self.assertRaises(ValueError):g.check(tree({**ok,extra:b'#!/bin/sh\n'},LINK))
+            with self.subTest('platform without a pinned file'),self.assertRaises(ValueError):
+                g.check(tree({k:v for k,v in ok.items() if k!='lib/upgrade/fwtool.sh'},LINK))
             boot={**ok,'etc/init.d/network':b'#!/bin/sh /etc/rc.common\nstart(){ . /lib/upgrade/platform.sh; }\n'}
             with self.subTest('reachable from boot'),self.assertRaises(ValueError):g.check(tree(boot,LINK))
         finally:
