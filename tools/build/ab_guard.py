@@ -12,7 +12,7 @@ import posixpath
 import re
 import sys
 
-from stage_native import load_archive, resolve
+from stage_native import UPGRADE_PINNED, load_archive, resolve
 
 FORBIDDEN = re.compile(rb'ab_image_sync|zmtk_boot_done|bootctrl|platform_do_upgrade|nandwrite|flash_erase|ubiupdatevol|'
                        rb'ubiformat|\bmtd\s[^\n]*\bwrite\b|(?:^|[\s;&|`(])(?:/sbin/)?sysupgrade\s|of=/dev/(?:mtd|ubi|block)|dd-nand|fw_setenv|ubi(?:rmvol|mkvol|rsvol|attach|detach)|flash_eraseall|flash_unlock|\bmtd\s[^\n]*\b(?:erase|unlock)\b')
@@ -40,9 +40,6 @@ def user_data_exempt(real, data):
 # The reviewed sysupgrade path (#81, zlt-x28-openwrt #154/#457/#465). OpenWrt's own sysupgrade stage 2 (common.sh, do_stage2, fwtool.sh of
 # 23.05.5, pinned by hash) plus our platform.sh, which may name only the tokens below. None of them may be reachable from boot: the boot
 # scan still reports them if any boot script mentions them. keep.d only lists files to back up.
-UPGRADE_PINNED = {'lib/upgrade/common.sh': 'c33b304881f13b55684e41d852835f885798fe752a1c075c6b9588b6174af16d',
-                  'lib/upgrade/do_stage2': 'b849b405446a5e6b1467d67bdd712e3ade9d215c78cf2bf80264914e21dfeed3',
-                  'lib/upgrade/fwtool.sh': 'f23a709e142752887e7982a9783a9f6861fb763c642d3cf3121200f06ad1c974'}
 PLATFORM = 'lib/upgrade/platform.sh'
 PLATFORM_TOKENS = {'sysupgrade', 'dd-nand', 'platform_do_upgrade', 'ubiattach', 'ubidetach', 'ubiformat'}
 

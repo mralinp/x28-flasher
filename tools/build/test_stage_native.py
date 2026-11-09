@@ -58,6 +58,21 @@ class StageTests(unittest.TestCase):
         self.assertFalse(report['flashable'])
         self.assertTrue((self.output/'NOT-FLASHABLE').exists())
 
+    def test_only_the_pinned_sysupgrade_files_survive_staging(self):
+        good=b'#!/bin/sh\n# reviewed stage 2\n'
+        old=dict(s.UPGRADE_PINNED)
+        self.addCleanup(lambda:(s.UPGRADE_PINNED.clear(),s.UPGRADE_PINNED.update(old)))
+        s.UPGRADE_PINNED['lib/upgrade/common.sh']=s.digest(good)
+        archive(self.modern, {'./usr/lib/opkg/status':b'Package: kernel\nVersion: 5.15\n\nPackage: base-files\nVersion: new\n\n',
+                './lib/upgrade/common.sh':good,'./lib/upgrade/do_stage2':b'changed','./lib/upgrade/platform.sh':b'stock platform',
+                './lib/upgrade/nand.sh':b'mtd write','./bin/ash':('busybox',),'./bin/busybox':b'modern'})
+        report=s.stage(self.stock, self.modern, [], self.output, roots=[])
+        with tarfile.open(self.output/'rootfs-staging.tar.gz') as t:
+            names=t.getnames()
+            self.assertIn('lib/upgrade/common.sh',names)
+            for gone in ('lib/upgrade/do_stage2','lib/upgrade/platform.sh','lib/upgrade/nand.sh'):self.assertNotIn(gone,names)
+        self.assertEqual(sorted(report['removed_upgrade_paths']),['lib/upgrade/do_stage2','lib/upgrade/nand.sh','lib/upgrade/platform.sh'])
+
     def test_paths_duplicates_and_link_escapes_refused(self):
         for files in ({'../escape':b'X'}, {'/absolute':b'X'}, {'./link':('../../escape',)},
                       {'./a':b'1','a':b'2'}, {'./link':('bin',),'./link/file':b'X'}):

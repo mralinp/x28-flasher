@@ -18,7 +18,7 @@ import sys
 import tarfile
 
 from ab_guard import check as ab_check
-from stage_native import digest, load_archive, resolve, validate_parents
+from stage_native import UPGRADE_PINNED, digest, load_archive, resolve, validate_parents
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'firmware'))
 from inventory import elf_dynamic
@@ -40,8 +40,10 @@ LUCI_MIPC = ROOT/'package/luci-proto-x28-mipc'
 BOOTOK = ROOT/'package/x28-bootok/files'
 DHCP = ROOT/'package/x28-dhcp/files'  # releases before x28-dhcp do not carry it
 STORAGE = ROOT/'package/x28-storage/files'
-# ubi-utils for attaching user_data (#183); its writers have no business on a router that must not touch other slots.
-UBI_WRITERS = tuple('usr/sbin/'+n for n in ('ubidetach','ubiformat','ubimkvol','ubirmvol','ubirsvol','ubiupdatevol','ubirename','ubiblock','ubinize','mtdinfo','ubicrc32'))
+SYSUPGRADE = ROOT/'package/x28-sysupgrade/files'  # releases before x28-sysupgrade do not carry it
+# ubi-utils for attaching user_data (#183); its writers have no business on a router that must not touch other slots. ubiformat, ubidetach and
+# ubiblock stay (#81): the reviewed sysupgrade (SYSUPGRADE below) runs them from the RAM root, and nothing boot-reachable may name them (ab_guard).
+UBI_WRITERS = tuple('usr/sbin/'+n for n in ('ubimkvol','ubirmvol','ubirsvol','ubiupdatevol','ubirename','ubinize','mtdinfo','ubicrc32'))
 MODEM = ROOT/'package/x28-modem/files'
 KMODS = ROOT/'package/x28-kmods/files'
 # The modules package/x28-kmods/build.sh writes, by opkg package. kmod-ipt-socket's x28_udp_lookup is in kmod-ipt-tproxy.
@@ -291,6 +293,7 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
         if name not in stock or not stock[name][0].isfile():raise ValueError('missing stock Wi-Fi profile: '+name)
         tree[name]=stock[name]
     for name in list(tree):
+        if name in UPGRADE_PINNED and digest(tree[name][1])==UPGRADE_PINNED[name]:continue  # the reviewed stage 2 (#81)
         if (name.startswith(('etc/rc.d/','etc/uci-defaults/','etc/board.d/','lib/upgrade/','etc/dropbear/'))
             or 'zmtk_boot_done' in name or (name.startswith('lib/preinit/') and 'failsafe' in name)):
             keep=name.startswith('etc/rc.d/') and name.split('/')[-1] in ALLOWED_START|ALLOWED_STOP
@@ -376,6 +379,7 @@ config timeserver 'ntp'
         own('etc/init.d/x28-dhcp',DHCP/'x28-dhcp.init',0o755);enable(96,'x28-dhcp')
         own('usr/libexec/x28-dhcp-guard',DHCP/'x28-dhcp-guard',0o755)
     own('lib/preinit/79_x28_user_data',STORAGE/'x28-user-data.preinit')
+    if (SYSUPGRADE/'lib/upgrade/platform.sh').is_file():own('lib/upgrade/platform.sh',SYSUPGRADE/'lib/upgrade/platform.sh')
     own('etc/config/fstab',STORAGE/'fstab')
     for name in UBI_WRITERS:
         if name in tree:removed.append(name);del tree[name]
