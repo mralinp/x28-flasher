@@ -275,10 +275,10 @@ def build_command(fl, action, params, loader):
                           + (["--chunk-mib", str(int(params["chunk"]))] if params.get("chunk") else []))
     if action == "build":
         import wizard
-        if problem := wizard.backup_problem(str(params.get("backup") or "")):
-            raise ValueError(problem)
+        if params.get("source") != "release" and (problem := wizard.backup_problem(str(params.get("backup") or ""))):
+            raise ValueError(problem)  # only building needs a backup; the signed download does not
         if not str(params.get("tag") or "").strip():
-            raise ValueError("choose the release to build from")
+            raise ValueError("choose the release")
         return action_cmd(fl, action)
     if action == "flash":
         import wizard
@@ -366,7 +366,7 @@ class App:
                 env["X28_FLASH"] = json.dumps({**{k: str(params.get(k) or "") or None for k in ("mode", "candidate", "backup", "copy", "prior", "slot")},
                                                "base": None, "no_ssh": True, "no_uart": True, "loader": loader})  # a flash needs neither SSH nor a UART log
             if action == "build":
-                env["X28_BUILD"] = json.dumps({k: str(params[k]) for k in ("backup", "tag")})
+                env["X28_BUILD"] = json.dumps({k: str(params.get(k) or "") for k in ("source", "backup", "tag")})
             if self.uart and self.uart["cap"].is_alive():
                 env["X28_UART_LOG"] = str(self.uart["path"])
             def on_line(line):

@@ -1,6 +1,10 @@
 """Release download and local build commands (#285). Run: python3 tools/x28-flasher/test_images.py"""
+import base64
+import hashlib
 import io
 import json
+import struct
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -10,52 +14,120 @@ from unittest import mock
 import images
 
 
-def release(bin_=b"\xffimage", sums_ok=True, extra=()):
-    manifest = json.dumps({"padded_sha256": images.sha256(bin_)}).encode()
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
+from test_package_ubi import image as ubi_image  # a small valid X28 UBI image
+import signed_image as si
+
+
+def keypair(seed):  # Ed25519 signing, only for the tests (the flasher itself only verifies)
+    h = hashlib.sha512(seed).digest()
+    a = (int.from_bytes(h[:32], "little") & ((1 << 254) - 8)) | (1 << 254)
+    return a, h[32:], point(si._mul(a, si._G))
+
+
+def point(pt):
+    zi = pow(pt[2], si._P - 2, si._P)
+    x, y = pt[0] * zi % si._P, pt[1] * zi % si._P
+    return (y | ((x & 1) << 255)).to_bytes(32, "little")
+
+
+def sign(key, msg):
+    a, prefix, pub = key
+    r = int.from_bytes(hashlib.sha512(prefix + msg).digest(), "little") % si._L
+    big_r = point(si._mul(r, si._G))
+    h = int.from_bytes(hashlib.sha512(big_r + pub + msg).digest(), "little") % si._L
+    return big_r + ((r + h * a) % si._L).to_bytes(32, "little")
+
+
+def usign_text(kid, payload, comment="x"):
+    return f"untrusted comment: {comment}\n".encode() + base64.b64encode(b"Ed" + kid + payload) + b"\n"
+
+
+def blob(aid, data, ext=False):
+    head = struct.pack(">I", (ext << 31) | (aid << 24) | (len(data) + 4))
+    return head + data + b"\0" * (-len(data) % 4)
+
+
+def msg(name, value, aid):  # a blobmsg entry: name length, name, NUL, padded to 4, then the value
+    n = name.encode()
+    return blob(aid, struct.pack(">H", len(n)) + n + b"\0" * (((2 + len(n) + 1 + 3) & ~3) - 2 - len(n)) + value, True)
+
+
+def fw_block(kind, data):
+    return data + struct.pack(">4sIB3xI", b"FWx0", 0, kind, len(data) + 16)
+
+
+FEED, SIGNER = keypair(b"feed"), keypair(b"signer")
+FEED_ID, SIGNER_ID = b"F" * 8, b"S" * 8
+FEED_KEY = base64.b64encode(b"Ed" + FEED_ID + FEED[2]).decode()
+
+
+def signed(root=None, devices=("Tozed,X28",), release="v1.0.0", signer=SIGNER, valid=(0, 2**40)):
+    root = ubi_image() if root is None else root
     buf = io.BytesIO()
-    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-        for name, data in (("manifest.json", manifest), ("rootfs-a-experimental.bin", bin_), *extra):
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        for name, data in (("sysupgrade-x28/root", root), ("sysupgrade-x28/root.sha256", f"{images.sha256(root)}\n".encode())):
             info = tarfile.TarInfo(name)
             info.size = len(data)
             tar.addfile(info, io.BytesIO(data))
-    blob = buf.getvalue()
-    sums = f"{images.sha256(blob) if sums_ok else '0' * 64}  {images.ARCHIVE}\n".encode()
-    listing = [{"tag_name": "v0.47.0", "assets": [{"name": images.ARCHIVE, "browser_download_url": "u/a"}, {"name": images.SUMS, "browser_download_url": "u/s"}]},
-               {"tag_name": "v0.46.0", "assets": []}]
-    files = {"u/a": blob, "u/s": sums}
-    return lambda url: json.dumps(listing).encode() if "api.github" in url else files[url]
+    meta = json.dumps({"supported_devices": list(devices), "version": {"release": release, "kernel": "4.19.205"}}).encode()
+    body = fw_block(1, b"\0" * 8 + meta)
+    message = buf.getvalue() + body
+    fields = (msg("certtype", struct.pack(">I", 1), 5) + msg("validfrom", struct.pack(">Q", valid[0]), 4)
+              + msg("expiresat", struct.pack(">Q", valid[1]), 4) + msg("pubkey", usign_text(SIGNER_ID, SIGNER[2]) + b"\0", 3))
+    payload = msg("ucert", fields, 2)
+    cert = blob(0, usign_text(FEED_ID, sign(FEED, payload)) + b"\0") + blob(1, payload)
+    sig = blob(0, blob(0, usign_text(SIGNER_ID, sign(signer, message)) + b"\0"))
+    return message + fw_block(0, blob(0, cert) + sig)
+
+
+def github(data, tag="v1.0.0", digest=None):
+    name = images.signed_name(tag)
+    rel = {"tag_name": tag, "assets": [{"name": name, "browser_download_url": "u/s", "digest": "sha256:" + (digest or images.sha256(data))}]}
+    return lambda url: json.dumps(rel).encode() if "api.github" in url else data
 
 
 class DownloadTests(unittest.TestCase):
-    def test_download_verifies_and_unpacks(self):
-        root = Path(tempfile.mkdtemp())
-        out = images.download(root, fetch=release())
-        self.assertEqual(out.name, "native-ubi-release-v0.47.0")
-        self.assertEqual((out / "rootfs-a-experimental.bin").read_bytes(), b"\xffimage")
+    def setUp(self):
+        patcher = mock.patch.object(si, "FEED_KEY", FEED_KEY)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.root = Path(tempfile.mkdtemp())
 
-    def test_checksum_mismatch_writes_nothing(self):
-        root = Path(tempfile.mkdtemp())
-        with self.assertRaises(ValueError):
-            images.download(root, fetch=release(sums_ok=False))
-        self.assertEqual(list(root.iterdir()), [])
+    def download(self, data, **kw):
+        return images.download(self.root, "v1.0.0", fetch=github(data, **kw))
 
-    def test_manifest_must_match_image(self):
-        fetch = release()
-        listing = json.loads(fetch("https://api.github.com/x"))
-        bad = release(bin_=b"a")
-        blob = bad("u/a")
-        with tarfile.open(fileobj=io.BytesIO(blob)) as src, tarfile.open(fileobj=(buf := io.BytesIO()), mode="w:gz") as dst:
-            for name, data in (("manifest.json", b'{"padded_sha256": "x"}'), ("rootfs-a-experimental.bin", b"a")):
-                info = tarfile.TarInfo(name)
-                info.size = len(data)
-                dst.addfile(info, io.BytesIO(data))
-        files = {"u/a": buf.getvalue(), "u/s": f"{images.sha256(buf.getvalue())}  {images.ARCHIVE}".encode()}
-        with self.assertRaises(ValueError):
-            images.download(Path(tempfile.mkdtemp()), fetch=lambda u: json.dumps(listing).encode() if "api.github" in u else files[u])
+    def test_signed_image_becomes_an_image_folder(self):
+        out = self.download(signed())
+        self.assertEqual(out.name, "native-ubi-release-v1.0.0")
+        bin_ = (out / "rootfs-a-experimental.bin").read_bytes()
+        manifest = json.loads((out / "manifest.json").read_text())
+        self.assertEqual(len(bin_), images.PARTITION)
+        self.assertEqual(manifest["padded_sha256"], images.sha256(bin_))
+        self.assertTrue(bin_.startswith(ubi_image()))
+        self.assertEqual(manifest["source"]["metadata"]["version"]["release"], "v1.0.0")
+        self.assertEqual(self.download(signed()), out)  # downloading it again keeps the same folder
 
-    def test_no_release_with_an_image(self):
+    def test_refused_and_nothing_kept(self):
+        good = signed()
+        bad = bytearray(good)
+        bad[600] ^= 1
+        cases = {"digest": (good, {"digest": "0" * 64}), "tampered": (bytes(bad), {}), "uncertified signer": (signed(signer=keypair(b"other")), {}),
+                 "other board": (signed(devices=("Tozed", "X28")), {}), "other release": (signed(release="v0.9.0"), {}),
+                 "expired": (signed(valid=(0, 1)), {}), "not UBI": (signed(root=b"\xff" * 4096), {})}
+        for why, (data, kw) in cases.items():
+            with self.subTest(why), self.assertRaises(ValueError):
+                self.download(data, **kw)
+        self.assertEqual(list(self.root.iterdir()), [])
+
+    def test_release_without_a_signed_image(self):
         with self.assertRaises(RuntimeError):
-            images.download(Path(tempfile.mkdtemp()), fetch=lambda u: b'[{"tag_name": "v1", "assets": []}]')
+            images.download(self.root, "v1.0.0", fetch=lambda u: b'{"tag_name": "v1.0.0", "assets": []}')
+
+    def test_release_list_marks_signed_releases(self):
+        listing = [{"tag_name": "v1.0.0", "published_at": "2026-11-10T00:00:00Z", "assets": [{"name": "x28-assembly-v1.0.0.tar.gz"}, {"name": "x28-sysupgrade-1.0.0.tar"}]},
+                   {"tag_name": "v0.99.0", "assets": [{"name": "x28-assembly-v0.99.0.tar.gz"}]}]
+        self.assertEqual([(r["tag"], r["signed"]) for r in images.releases(fetch=lambda u: json.dumps(listing).encode())], [("v1.0.0", True), ("v0.99.0", False)])
 
 
 class StockAccessTests(unittest.TestCase):

@@ -116,7 +116,7 @@ const svg = (d, c = "currentColor", n = 18) => `<svg width="${n}" height="${n}" 
 const MENU = [
   ["backup", "Backup", "Save every partition on the board to this computer. Do this first."],
   ["access", "Root access", "Root SSH (key only, port 22) on the stock firmware in slot B, with the key you choose or a new one. Builds from a slot B image, rehearses, then writes."],
-  ["build", "Build image", "Downloads a release's assembly bundle from GitHub and assembles the firmware image from it and your backup."],
+  ["build", "Get an image", "Downloads a release's signed image, or builds one from the release's assembly bundle and your backup."],
   ["flash", "Flash OpenWrt", "Rehearse, then write an image to slot A. Every guard and typed confirmation stays."],
   ["boot", "Boot order", "Choose which slot the modem boots: A (OpenWrt) or B (vendor firmware). Over SSH on the running modem."],
   ["read", "Read & verify", "Read one partition from the board and compare it with your backup. Writes nothing."],
@@ -408,17 +408,26 @@ function viewBoot() {
   </dialog>`;
 }
 function viewBuild() {
-  const pick = S.releases ? Math.max(0, S.releases.findIndex((r) => !r.beta)) : 0;  // the newest stable release, else the newest
   if (!S.releases && !S.relError) api("/api/releases", {}).then((r) => { S.releases = r.releases; if (S.screen === "build") drawView(); }, (e) => { S.relError = "Could not load the release list: " + e.message; if (S.screen === "build") drawView(); });
+  const signed = (S.releases || []).filter((r) => r.signed);
+  const src = S.bdSource || (S.releases && !signed.length ? "backup" : "release");  // the signed download when a release has one
+  const list = src === "release" ? signed : (S.releases || []);
+  const pick = Math.max(0, list.findIndex((r) => !r.beta));  // the newest stable release, else the newest
   const st = S.st, b = st.build, sel = (id, items, empty) => items.length ? `<select id="${id}">${items.map((v) => `<option value="${esc(v)}">${esc(v)}</option>`).join("")}</select>` : `<input type="text" id="${id}" placeholder="${empty}">`;
-  const blocked = !b.docker ? "Docker is not installed. Install and start Docker Desktop, then reload." : !b.backups.length ? "Build needs a finished backup. Run Backup to the end first, or choose a backup folder below." : "";
-  return `${head("Build image", "Downloads the release's assembly bundle from GitHub (checked against its SHA-256) and assembles the firmware image from it and your backup. Writes only under private/build; nothing touches the modem.")}
+  const blocked = src === "release" ? (S.releases && !signed.length ? "No release carries a signed image yet. Build one from your backup instead." : "")
+    : !b.docker ? "Docker is not installed. Install and start Docker Desktop, then reload." : !b.backups.length ? "Build needs a finished backup. Run Backup to the end first, or choose a backup folder below." : "";
+  const opt = (v, title, text) => `<label class="chk" style="border:1px solid var(--${src === v ? "acc" : "line"});border-radius:10px;padding:10px 14px"><input type="radio" name="bd-source" value="${v}" data-act="bd-source" ${src === v ? "checked" : ""}><span><b>${title}</b> · ${text}</span></label>`;
+  return `${head("Get an image", "Either download a release's signed image, or build one from the release's assembly bundle and your backup. Writes only under private/build; nothing touches the modem.")}
   <div class="box" style="padding:18px;display:grid;gap:14px;max-width:760px">
-    <label class="f"><span class="lbl">Backup to build from</span><span style="display:flex;gap:8px">${sel("bd-backup", b.backups, "Folder of a finished backup")}<button type="button" class="btn" data-act="browse" data-target="bd-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>
-    <label class="f"><span class="lbl">Version to build</span>${S.releases ? `<select id="bd-tag">${S.releases.map((r, i) => `<option value="${esc(r.tag)}" ${i === pick ? "selected" : ""}>${esc(r.tag)}  ${r.beta ? "beta" : "stable"}  ·  ${esc(r.date)}${i === 0 ? "  ·  newest" : ""}${i === pick && !r.beta ? "  ·  recommended" : ""}</option>`).join("")}</select><span class="mut" style="font-size:12.5px">${S.releases.some((r) => !r.beta) ? "Stable releases are tested; beta ones are pre-releases. The newest stable one is selected." : "Every release is still a beta; the newest is selected."}</span>` : `<span class="mut">${S.relError ? esc(S.relError) : "Loading the release list from GitHub…"}</span>`}</label>
+    <div style="display:grid;gap:8px">
+      ${opt("release", "Download the signed image", "the image GitHub built for that release, checked against the X28 signing key before it is kept. No Docker needed.")}
+      ${opt("backup", "Build from my backup", "assembles the image here from the release's assembly bundle and the stock files of your own backup. Needs Docker.")}
+    </div>
+    ${src === "backup" ? `<label class="f"><span class="lbl">Backup to build from</span><span style="display:flex;gap:8px">${sel("bd-backup", b.backups, "Folder of a finished backup")}<button type="button" class="btn" data-act="browse" data-target="bd-backup" data-kind="folder" style="flex:none;height:40px">Browse…</button></span></label>` : ""}
+    <label class="f"><span class="lbl">Version</span>${S.releases ? (list.length ? `<select id="bd-tag">${list.map((r, i) => `<option value="${esc(r.tag)}" ${i === pick ? "selected" : ""}>${esc(r.tag)}  ${r.beta ? "beta" : "stable"}  ·  ${esc(r.date)}${i === 0 ? "  ·  newest" : ""}${i === pick && !r.beta ? "  ·  recommended" : ""}</option>`).join("")}</select><span class="mut" style="font-size:12.5px">${list.some((r) => !r.beta) ? "Stable releases are tested; beta ones are pre-releases. The newest stable one is selected." : "Every release is still a beta; the newest is selected."}</span>` : `<span class="mut">No release to choose.</span>`) : `<span class="mut">${S.relError ? esc(S.relError) : "Loading the release list from GitHub…"}</span>`}</label>
     <div><button type="button" class="btn" data-act="refresh-releases">Refresh versions</button></div>
     ${blocked ? `<div class="warn">${esc(blocked)}</div>` : ""}
-    <div><button class="primary" id="bd-go" data-act="build" ${busy() || (!b.docker || !b.backups.length) ? "disabled" : ""}>Build image</button></div>
+    <div><button class="primary" id="bd-go" data-act="build" ${busy() || blocked || !list.length ? "disabled" : ""}>${src === "release" ? "Download image" : "Build image"}</button></div>
   </div>
   ${S.job && S.job.kind === "build" ? consoleHtml() : ""}`;
 }
@@ -573,9 +582,12 @@ document.addEventListener("click", async (e) => {
   if (a === "pw-next") return pwNext();
   if (a === "pw-cancel") { if (S.pw && S.pw.timer) clearInterval(S.pw.timer); S.pw = null; return go("home"); }
   if (a === "backup") return openPower("backup", { out: $("#bk-out").value, loader: $("#bk-loader")?.value, twice: $("#bk-twice").checked });
+  if (a === "bd-source") { S.bdSource = t.value; return drawView(); }
   if (a === "build") {
-    const params = { backup: $("#bd-backup").value, tag: $("#bd-tag")?.value };
+    const source = document.querySelector('input[name="bd-source"]:checked')?.value || "backup";
+    const params = { source, backup: $("#bd-backup")?.value || "", tag: $("#bd-tag")?.value };
     if (!params.tag) return alert("The release list is not loaded yet.");
+    if (source === "release") { S.job = null; if (await start("build", params)) drawView(); return; }
     try {
       const { problem } = await api("/api/check_backup", { path: params.backup });
       if (problem) return alert(problem);

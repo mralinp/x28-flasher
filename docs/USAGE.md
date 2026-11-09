@@ -14,7 +14,7 @@ selected step on the right. Only one step runs at a time. A running step keeps r
 - `DA_BR.bin`, the vendor download agent. It is already in the app and in the repo (`tools/x28-flasher/assets/`); you can choose another copy in the app.
 - For a write: a **UART adapter** on the modem's debug pins is recommended (its log is kept with the run). Without one the app asks and the way back
   from a failed write is a USB restore from your backup.
-- **Docker**, for Build image and Root access (the images are assembled in a container).
+- **Docker**, for building an image from your backup and for Root access (the images are assembled in a container). Downloading the signed image needs none.
 - On Windows and Linux the app opens in your browser; on a Mac it is a native window.
 
 ## Which step, in which order
@@ -24,7 +24,7 @@ selected step on the right. Only one step runs at a time. A running step keeps r
 | Connect | Finds the modem over USB and reads what it is | no | first, and after every power cycle |
 | Backup | Saves every partition to this computer, hash-checked | no | first, always, and keep a second copy |
 | Root access | Puts key-only SSH on the stock firmware (slot B) | **yes** (slot B overlay) | once, on a fresh unit, after the Backup |
-| Build image | Assembles the OpenWrt image for your own unit from a release and your backup | no | before a flash |
+| Get an image | Downloads a release's signed image, or builds one from a release and your backup | no | before a flash |
 | Flash OpenWrt | Writes the image to slot A | **yes** (slot A) | after Build |
 | Boot order | Chooses which slot boots next | **yes** (2 bytes x 4 copies) | after a flash, to boot OpenWrt, or to go back to stock |
 | Read & verify | Reads one partition and compares it with your backup | no | after every write |
@@ -49,10 +49,15 @@ boot_para, about 130 MiB; rootfs_a is read so the write can prove that slot A st
 and writes only slot B's overlay tail. You choose an RSA key from `~/.ssh`, or a new pair (`~/.ssh/x28_rsa`) is made. SSH then answers on port 22
 (and 2222) with that key. Telnet is deliberately not offered. You type a confirmation phrase yourself. Do it once; the stock slot B keeps SSH after.
 
-## Build image
+## Get an image
 
-Pick a firmware release. The app downloads that release's assembly bundle (rootfs, userspace, kernel modules), checks its hashes, and assembles the
-slot image locally from your backup, so nothing proprietary is published. The result appears in the Flash page.
+Two ways, both ending in the Flash page:
+
+- **Download the signed image** (no Docker): the release's `x28-sysupgrade-<version>.tar`, built by CI. The app checks GitHub's SHA-256, the
+  signature (a signer certified by the X28 feed key, which is built into the app, within its validity dates), that the metadata names this board
+  (`Tozed,X28`) and release, and the UBI layout; then pads the image to the 64 MiB slot. Anything wrong and nothing is kept.
+- **Build from my backup** (Docker): downloads the release's assembly bundle (rootfs, userspace, kernel modules), checks its hashes, and assembles
+  the slot image locally with the stock files of your own backup.
 
 ## Flash OpenWrt
 

@@ -1,18 +1,19 @@
-"""Where a flashable image comes from (#285): a release download, or a local run of the build pipeline."""
+"""Where a flashable image comes from (#285): a release's signed image (downloaded and checked), or a local build from the release's assembly and your backup."""
 import hashlib
 import io
 import json
 import re
 import shutil
+import sys
 import tarfile
 import time
 import urllib.request
 from pathlib import Path
 
 REPO = "mralinp/zlt-x28-openwrt"
-ARCHIVE = "x28-native-image.tar.gz"  # holds exactly manifest.json and rootfs-a-experimental.bin, the package_ubi output Flash reads
 SUMS = "SHA256SUMS"  # the release's one checksum file (asset names are case-insensitive, zlt-x28-openwrt#254)
-FILES = ("manifest.json", "rootfs-a-experimental.bin")
+FILES = ("manifest.json", "rootfs-a-experimental.bin")  # an image folder, as Flash reads it
+PARTITION = 0x4000000  # rootfs_a/b: the image is padded to it with 0xff, like package_ubi's output
 
 
 def sha256(data):
@@ -24,15 +25,6 @@ def get(url):
         return r.read()
 
 
-def latest_release(fetch=get, repo=REPO):
-    """The newest release that carries the image and its checksums, or None."""
-    for rel in json.loads(fetch(f"https://api.github.com/repos/{repo}/releases")):
-        urls = {a["name"]: a["browser_download_url"] for a in rel.get("assets", [])}
-        if ARCHIVE in urls and SUMS in urls:
-            return rel["tag_name"], urls
-    return None
-
-
 UNSUPPORTED_UP_TO = (0, 53, 3)  # releases up to and including v0.53.3 are not supported; the next version is the first one
 
 
@@ -42,38 +34,57 @@ def supported(tag):
     return bool(m) and tuple(map(int, m.groups())) > UNSUPPORTED_UP_TO
 
 
+def signed_name(tag):
+    return f"x28-sysupgrade-{tag[1:]}.tar"
+
+
 def releases(fetch=get, repo=REPO):
-    """Releases that carry an assembly bundle, newest first: [{tag, date, beta}] (beta: GitHub marks it a pre-release)."""
+    """Releases that carry an assembly bundle, newest first: [{tag, date, beta, signed}] (beta: GitHub marks it a pre-release;
+    signed: it also carries the signed image, so it can be downloaded instead of built)."""
     out = []
     for rel in json.loads(fetch(f"https://api.github.com/repos/{repo}/releases?per_page=30")):
         names = [a["name"] for a in rel.get("assets", [])]
         if supported(rel["tag_name"]) and any(n.startswith("x28-assembly-") and n.endswith(".tar.gz") for n in names):
-            out.append({"tag": rel["tag_name"], "date": (rel.get("published_at") or "")[:10], "beta": bool(rel.get("prerelease"))})
+            out.append({"tag": rel["tag_name"], "date": (rel.get("published_at") or "")[:10], "beta": bool(rel.get("prerelease")),
+                        "signed": signed_name(rel["tag_name"]) in names})
     return out
 
 
-def download(dest_root, fetch=get, repo=REPO):
-    """Fetch, verify and unpack the newest release image into dest_root/native-ubi-release-<tag>; returns that folder."""
-    found = latest_release(fetch, repo)
-    if not found:
-        raise RuntimeError("no release carries a flashable image yet (#254)")
-    tag, urls = found
-    blob = fetch(urls[ARCHIVE])
-    sums = {line.split()[-1]: line.split()[0] for line in fetch(urls[SUMS]).decode().splitlines() if line.strip()}
-    if sums.get(ARCHIVE) != sha256(blob):
-        raise ValueError(f"{ARCHIVE} does not match {SUMS} of release {tag}")
+def download(dest_root, tag, fetch=get, repo=REPO, now=None):
+    """The signed image of one release as an image folder dest_root/native-ubi-release-<tag>; returns that folder. The download must match
+    GitHub's digest, its signature must chain to the X28 feed key (signed_image), its metadata must name this board and release, and the
+    UBI image inside must match its own hash and the X28 layout. Nothing is kept on any problem."""
+    import signed_image
+    name = signed_name(tag)
+    assets = release_assets(tag, fetch, repo)
+    if name not in assets:
+        raise RuntimeError(f"release {tag} has no signed image")
+    url, want = assets[name]
+    blob = fetch(url)
+    if not want or sha256(blob) != want:
+        raise ValueError(f"{name} does not match its expected SHA-256")
+    tarball, meta = signed_image.verify(blob, now=now)
+    if meta.get("version", {}).get("release") != tag:
+        raise ValueError(f"the signed image is for {meta.get('version', {}).get('release')}, not {tag}")
+    with tarfile.open(fileobj=io.BytesIO(tarball)) as tar:  # by name only: nothing in the archive picks a path
+        root = tar.extractfile("sysupgrade-x28/root").read()
+        root_sha = tar.extractfile("sysupgrade-x28/root.sha256").read().decode().split()[0]
+    if sha256(root) != root_sha or not 0 < len(root) <= PARTITION:
+        raise ValueError("the image inside does not match its hash")
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build") if not getattr(sys, "frozen", False) else str(Path(sys._MEIPASS) / "tools/build"))
+    from package_ubi import inspect  # the same layout check package_ubi runs on a local build
+    padded = root + b"\xff" * (PARTITION - len(root))
+    manifest = inspect(padded)
+    manifest.update(flashable=False, ubi_sha256=sha256(root), padded_sha256=sha256(padded), padded_bytes=len(padded),
+                    source={"release": tag, "signed_image": name, "signed_image_sha256": want, "metadata": meta})
     out = dest_root / f"native-ubi-release-{tag}"
-    if out.exists():
-        raise FileExistsError(f"{out} already exists")
-    with tarfile.open(fileobj=io.BytesIO(blob)) as tar:
-        # by name only: nothing in the archive picks a path
-        data = {n: tar.extractfile(n).read() for n in FILES}
-    manifest = json.loads(data["manifest.json"])
-    if manifest.get("padded_sha256") != sha256(data["rootfs-a-experimental.bin"]):
-        raise ValueError("image does not match its manifest")
+    if out.exists():  # downloaded before: fine when it holds this very image
+        if json.loads((out / "manifest.json").read_text()).get("padded_sha256") == manifest["padded_sha256"]:
+            return out
+        raise FileExistsError(f"{out} already exists with another image")
     out.mkdir(parents=True)
-    for name, content in data.items():
-        (out / name).write_bytes(content)
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    (out / "rootfs-a-experimental.bin").write_bytes(padded)
     return out
 
 

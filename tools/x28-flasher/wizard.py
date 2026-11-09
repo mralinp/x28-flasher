@@ -220,17 +220,29 @@ def backup_problem(path, check_hash=False):
 
 
 def build(fl, ui, cfg):
-    """A flashable image assembled here from a GitHub release of the OpenWrt repo and the user's backup; lands in private/build/native-ubi-*,
-    where Flash looks. The page passes its answers in X28_BUILD (nothing is asked); the terminal asks for them. (A prebuilt, flashable release
-    image is not offered yet: images.download is kept for that.)"""
+    """A flashable image in private/build/native-ubi-*, where Flash looks: a release's signed image, downloaded and checked against the X28
+    signing key (source "release"), or one assembled here from a release's assembly bundle and the user's backup (source "backup").
+    The page passes its answers in X28_BUILD (nothing is asked); the terminal asks for them."""
     import images
     from common import DEFAULT_BACKUP, PRIVATE
     try:
         given = json.loads(os.environ["X28_BUILD"]) if os.environ.get("X28_BUILD") else None
         if not given:
             tags = images.releases()
-            given = {"backup": ask_path(ui, cfg, "backup", "Folder with your verified backup", DEFAULT_BACKUP, True),
-                     "tag": ui.select("Which release should the image be built from?", [(f"{r['tag']}  {'beta' if r['beta'] else 'stable'}  {r['date']}", r["tag"]) for r in tags])}
+            source = ui.select("Where should the image come from?", [("Download a release's signed image (no Docker)", "release"),
+                                                                       ("Build it from a release and your backup (Docker)", "backup")])
+            tags = [r for r in tags if r["signed"]] if source == "release" else tags
+            if not tags:
+                raise RuntimeError("no release carries a signed image yet; build one from your backup instead")
+            given = {"source": source, "tag": ui.select("Which release?", [(f"{r['tag']}  {'beta' if r['beta'] else 'stable'}  {r['date']}", r["tag"]) for r in tags])}
+            if source != "release":
+                given["backup"] = ask_path(ui, cfg, "backup", "Folder with your verified backup", DEFAULT_BACKUP, True)
+        if given.get("source") == "release":
+            print("  " + paint(f"Downloading the signed image of {given['tag']} and checking its signature, metadata and layout...", "dim"))
+            out = images.download(PRIVATE / "build", given["tag"])
+            cfg.set("last_image", str(out))
+            print("  " + good(f"Image downloaded and verified: {out}"))
+            return 0
         return build_local(fl, ui, cfg, PRIVATE / "build", given)
     except (RuntimeError, ValueError, OSError) as err:
         print("  " + bad(str(err)))
