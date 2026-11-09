@@ -144,7 +144,8 @@ class RestoreTests(unittest.TestCase):
         self.parts = original
 
     def test_relative_source_survives_probe_directory_change(self):
-        self.target['image'] = Path(os.path.relpath(self.target['image'], self.cwd))
+        os.chdir(self.root.parent)  # same drive as the temp files (Windows CI: checkout on D:, temp on C:)
+        self.target['image'] = Path(os.path.relpath(self.target['image']))
         self.assertEqual(self.run_main('--write'), 0)
         self.assertTrue(self.source_seen.is_absolute())
 
@@ -165,7 +166,8 @@ class RestoreTests(unittest.TestCase):
         self.connect.assert_not_called()
 
     def test_relative_backup_keeps_guard_mismatch_diagnostics(self):
-        self.backup_arg = Path(os.path.relpath(self.root, self.cwd))
+        os.chdir(self.root.parent)
+        self.backup_arg = Path(os.path.relpath(self.root))
         self.patch('backup_table', lambda backup: [
             {**p, 'image': backup / Path(p['image']).name} for p in self.parts])
         self.after_guard = True
