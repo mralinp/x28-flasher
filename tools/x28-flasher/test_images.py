@@ -146,9 +146,9 @@ class LocalTests(unittest.TestCase):
         work, out = Path("/w"), Path("/b/native-ubi-local-1")
         cmds = images.local_commands(inputs, work, out, Path("/r"))
         self.assertEqual([Path(c[1]).name if c[0] == "python3" else c[1] for c in cmds], ["stage_native.py", "first_boot.py", "build", "run"])
-        self.assertEqual(cmds[0][-1], "/w/stage")
-        self.assertIn("/w/stage", cmds[1])
-        self.assertIn("/w/profile:/profile:ro", cmds[3])
+        self.assertEqual(cmds[0][-1], str(Path("/w/stage")))  # host paths in the platform's form
+        self.assertIn(str(Path("/w/stage")), cmds[1])
+        self.assertIn(f"{Path('/w/profile')}:/profile:ro", cmds[3])
         self.assertEqual(cmds[3][-1], "/out/native-ubi-local-1")
 
 
