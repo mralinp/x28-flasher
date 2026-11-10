@@ -79,7 +79,7 @@ jobs:
           mkdir -p bh/src
           git -C bh/src init -q
           git -C bh/src fetch -q --depth 1 https://github.com/bkerler/mtkclient.git "$COMMIT"
-          git -C bh/src -c advice.detachedHead=false checkout -q FETCH_HEAD
+          git -C bh/src -c advice.detachedHead=false -c core.autocrlf=false checkout -q FETCH_HEAD  # LF on Windows too: the bundled library is hashed
           python3 -m venv bh/venv
           ${{ matrix.py }} -m pip install -q pycryptodome pycryptodomex pyserial pyusb colorama questionary pyinstaller
           if [ "$RUNNER_OS" = Windows ]; then ${{ matrix.py }} -m pip install -q libusb; fi

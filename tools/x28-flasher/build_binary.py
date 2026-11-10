@@ -69,7 +69,7 @@ def main():
             if not required:
                 continue
             sys.exit(f"patch target not found in {path}")
-        path.write_text(text.replace(old, new))
+        path.write_text(text.replace(old, new), newline="\n")  # LF on every system: identity.json hashes the LF text
     for cache in pkg.rglob("__pycache__"):
         shutil.rmtree(cache)
 
