@@ -12,6 +12,11 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "recovery"))
+try:
+    import pty  # noqa: F401
+except ImportError:  # Windows: a bare launch opens the terminal menu instead of the page (x28_flasher.main)
+    print("skipped: the page needs a pty")
+    sys.exit(0)
 import gui  # noqa: E402
 
 PROMPT = "print('1) a'); print('2) b'); x = input('Pick [1]: '); print('got', x or '1')"
