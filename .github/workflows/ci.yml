@@ -67,9 +67,11 @@ jobs:
 
       - name: Unit tests
         run: |
-          for t in tools/build/test_*.py; do python3 "$t" || exit 1; done
-          for t in tools/recovery/test_*.py tools/x28-flasher/test_*.py; do python3 "$t" || exit 1; done
-          python3 tools/recovery/common.py
+          # Every file runs, then the job fails if any did: one run shows all failures (a platform's first failure hid the rest, #100).
+          bad=
+          for t in tools/build/test_*.py tools/recovery/test_*.py tools/x28-flasher/test_*.py; do python3 "$t" || bad="$bad $t"; done
+          python3 tools/recovery/common.py || bad="$bad common.py"
+          [ -z "$bad" ] || { echo "::error::failed:$bad"; exit 1; }
 
       - name: Pinned mtkclient and build venv
         run: |

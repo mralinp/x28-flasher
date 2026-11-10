@@ -134,9 +134,9 @@ class StockAccessTests(unittest.TestCase):
     def test_container_is_offline_and_runs_the_repo_script_on_read_only_inputs(self):
         cmd = images.stock_access_command(Path("/b/rootfs_b.bin"), Path("/k/router.pub"), Path("/out"), Path("/repo"))
         self.assertEqual(cmd[cmd.index("--network") + 1], "none")
-        self.assertIn("/b/rootfs_b.bin:/in/rootfs_b.bin:ro", cmd)
-        self.assertIn("/k/router.pub:/in/router.pub:ro", cmd)
-        self.assertIn("/repo/tools/build/stock_access.py:/opt/stock_access.py:ro", cmd)
+        self.assertIn(f"{Path('/b/rootfs_b.bin')}:/in/rootfs_b.bin:ro", cmd)  # host side in the platform's form, as Docker takes it
+        self.assertIn(f"{Path('/k/router.pub')}:/in/router.pub:ro", cmd)  # host side in the platform's form, as Docker takes it
+        self.assertIn(f"{Path('/repo/tools/build/stock_access.py')}:/opt/stock_access.py:ro", cmd)  # host side in the platform's form, as Docker takes it
         self.assertEqual(cmd[-8:], ["python3", "/opt/stock_access.py", "--image", "/in/rootfs_b.bin", "--public-key", "/in/router.pub", "--output", "/out"])
 
 
@@ -229,7 +229,7 @@ class InputTests(unittest.TestCase):
         cmd = images.stock_command(Path("/b/rootfs_b.bin"), Path("/o"), Path("/r"))
         self.assertIn("none", cmd)
         self.assertIn("*_vol-rootfs.ubifs", cmd[-1])  # not rootfs_data, which also matches *vol-rootfs*
-        self.assertIn("/b/rootfs_b.bin:/in/rootfs_b.bin:ro", cmd)
+        self.assertIn(f"{Path('/b/rootfs_b.bin')}:/in/rootfs_b.bin:ro", cmd)  # host side in the platform's form, as Docker takes it
 
 
 if __name__ == "__main__":
