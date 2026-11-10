@@ -45,7 +45,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--home", type=Path, required=True)
     ap.add_argument("--out", type=Path, default=Path("dist"))
-    ap.add_argument("--loader", type=Path, help="your DA_BR.bin: put it inside this build only (it is Quectel's, never committed or built by CI; do not share the result)")
+    ap.add_argument("--loader", type=Path, help="another DA_BR.bin to bundle instead of assets/DA_BR.bin (same SHA-256 check)")
     ap.add_argument("--version", default="dev", help="the app's version, shown in the page (CI passes the release it is about to tag)")
     args = ap.parse_args()
     home = args.home.resolve()
@@ -53,7 +53,7 @@ def main():
     from common import MTKCLIENT_COMMIT
     from setup_mtkclient import PATCHES
     head = subprocess.check_output(["git", "-C", home / "src", "rev-parse", "HEAD"], text=True).strip()
-    if head != MTKCLIENT_COMMIT or Path(sys.executable).resolve() != (home / "venv/bin/python").resolve():
+    if head != MTKCLIENT_COMMIT or Path(sys.prefix).resolve() != (home / "venv").resolve():  # sys.prefix: the same on Windows (venv/Scripts)
         sys.exit("BUILD_HOME/src must be the pinned commit and this must run under BUILD_HOME/venv")
 
     if subprocess.check_output(["git", "-C", home / "src", "status", "--porcelain", "--ignored"], text=True).strip():
@@ -92,13 +92,12 @@ def main():
     data += [(f, "gui/fonts") for f in sorted((HERE / "gui" / "fonts").glob("*"))]  # the same fonts on every system
     data += [(HERE / "gui" / "index.html", "gui"), (HERE / "device_info.py", "gui")]  # the page and the tool it runs
     from da_file import REPO_DA  # the copy in the repo is bundled unless --loader names another
-    loader = args.loader or (REPO_DA if REPO_DA.is_file() else None)
-    if loader:
-        from restore_entry import DA_HASH
-        if hashlib.sha256(loader.read_bytes()).hexdigest() != DA_HASH:
-            sys.exit(f"{loader} is not the download agent the tools expect (SHA-256 differs)")
-        shutil.copy2(loader, work / "DA_BR.bin")  # whatever it is called, the tools look for this name
-        data += [(work / "DA_BR.bin", "vendor-da")]
+    from restore_entry import DA_HASH
+    loader = args.loader or REPO_DA
+    if not loader.is_file() or hashlib.sha256(loader.read_bytes()).hexdigest() != DA_HASH:  # no build without it: the package must work as downloaded
+        sys.exit(f"{loader} is missing or not the download agent the tools expect (SHA-256 differs)")
+    shutil.copy2(loader, work / "DA_BR.bin")  # whatever it is called, the tools look for this name
+    data += [(work / "DA_BR.bin", "vendor-da")]
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onedir", "--name", "x28-flasher",
            "--distpath", args.out, "--workpath", work, "--specpath", work, "--exclude-module", "PySide6", "--exclude-module", "mtkclient.gui",
            "--collect-data", "mtkclient", "--collect-binaries", "usb"]

@@ -1,6 +1,7 @@
 # Tests the recovery tools, builds the x28-flasher app (PyInstaller, one folder) from the pinned, patched mtkclient and packages an
 # installer per system: macOS Apple silicon (.dmg), Linux x86_64 (.deb) and Windows x64 (setup .exe). No build output is ever committed;
-# the installers are workflow artifacts. The vendor download agent (tools/x28-flasher/assets/DA_BR.bin, hash-checked) is bundled by build_binary.py.
+# the installers are workflow artifacts, and release assets on main. The vendor download agent (tools/x28-flasher/assets/DA_BR.bin, hash-checked) is
+# bundled by build_binary.py, which stops without it: an installed package needs nothing else.
 name: ci
 
 on:
@@ -78,8 +79,8 @@ jobs:
           git -C bh/src fetch -q --depth 1 https://github.com/bkerler/mtkclient.git "$COMMIT"
           git -C bh/src -c advice.detachedHead=false checkout -q FETCH_HEAD
           python3 -m venv bh/venv
-          bh/venv/bin/pip install -q pycryptodome pycryptodomex pyserial pyusb colorama questionary pyinstaller
-          if [ "$RUNNER_OS" = Windows ]; then bh/venv/Scripts/pip install -q libusb; fi
+          ${{ matrix.py }} -m pip install -q pycryptodome pycryptodomex pyserial pyusb colorama questionary pyinstaller
+          if [ "$RUNNER_OS" = Windows ]; then ${{ matrix.py }} -m pip install -q libusb; fi
 
       - name: Build
         run: ${{ matrix.py }} tools/x28-flasher/build_binary.py --home bh --out dist --version "${{ needs.version.outputs.version }}"
@@ -90,7 +91,8 @@ jobs:
           [ "$RUNNER_OS" = Windows ] && B=$B.exe
           "$B" --selftest
           want="$(python3 -c "import json; print(json.load(open('dist/x28-flasher/_internal/identity.json'))['xml_lib_sha256'])")"
-          test "$("$B" identity)" = "$want"
+          test "$("$B" identity | tr -d '\r')" = "$want"
+          test -s dist/x28-flasher/_internal/vendor-da/DA_BR.bin  # the download agent is inside: nothing to fetch after installing
 
       - name: Installer (macOS .dmg)
         if: runner.os == 'macOS'
@@ -120,7 +122,8 @@ jobs:
             SHA256SUMS-${{ matrix.name }}.txt
 
   release:  # a merge to main is a release: tag the version the installers were built with and attach them (0.x are pre-releases)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # always(): the macOS job gets no runner while the repo is private (#3), and a cancelled matrix job would otherwise skip every release
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.version.result == 'success'
     needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
@@ -137,6 +140,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
+          ls assets/X28-Flasher-linux-x86_64.deb assets/X28-Flasher-windows-x64-setup.exe  # both must have built; the .dmg is attached when macOS ran
           PRE=""
           case "$VERSION" in 0.*) PRE="--prerelease" ;; esac
           git config user.name "github-actions[bot]"
