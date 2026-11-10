@@ -5,6 +5,10 @@ import sys
 import time
 from pathlib import Path
 
+for _s in (sys.stdout, sys.stderr):  # a redirected Windows stdout is cp1252, which has no ✓: replace what it cannot show, never crash
+    if hasattr(_s, "reconfigure"):
+        _s.reconfigure(errors="replace")
+
 try:
     import questionary
 except ImportError:  # the numbered prompts below work without it

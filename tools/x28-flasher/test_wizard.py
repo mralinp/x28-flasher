@@ -1,4 +1,5 @@
 """Wizard helpers and the plain-prompt fallback (#272). Run: python3 tools/x28-flasher/test_wizard.py"""
+import os
 import json
 import tempfile
 import time
@@ -165,7 +166,8 @@ class PlainPromptTests(unittest.TestCase):
             key = wizard.choose_key(ui, cfg)
         self.assertEqual(key, str(home / ".ssh/x28_rsa.pub"))
         self.assertTrue(Path(key).read_text().startswith("ssh-rsa "))
-        self.assertEqual((home / ".ssh/x28_rsa").stat().st_mode & 0o077, 0)
+        if os.name != "nt":  # Windows has no mode bits; the key is private by its ACL
+            self.assertEqual((home / ".ssh/x28_rsa").stat().st_mode & 0o077, 0)
 
 
 class FancySelectTests(unittest.TestCase):
