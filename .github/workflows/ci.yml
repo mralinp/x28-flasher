@@ -122,7 +122,7 @@ jobs:
             SHA256SUMS-${{ matrix.name }}.txt
 
   release:  # a merge to main is a release: tag the version the installers were built with and attach them (0.x are pre-releases)
-    # always(): the macOS job gets no runner while the repo is private (#3), and a cancelled matrix job would otherwise skip every release
+    # always(): the macOS job gets no runner while the repo is private (#3) and the Windows job is red until the app is ported; either would skip every release
     if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.version.result == 'success'
     needs: [version, build]
     runs-on: ubuntu-latest
@@ -140,7 +140,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.version.outputs.version }}
         run: |
-          ls assets/X28-Flasher-linux-x86_64.deb assets/X28-Flasher-windows-x64-setup.exe  # both must have built; the .dmg is attached when macOS ran
+          ls assets/X28-Flasher-linux-x86_64.deb  # Linux is the gate; the .dmg (no runner while private, #3) and the Windows setup (not ported yet) are attached when they built
           PRE=""
           case "$VERSION" in 0.*) PRE="--prerelease" ;; esac
           git config user.name "github-actions[bot]"

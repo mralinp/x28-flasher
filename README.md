@@ -8,7 +8,7 @@
 
 [![CI](https://github.com/mralinp/x28-flasher/actions/workflows/ci.yml/badge.svg)](https://github.com/mralinp/x28-flasher/actions/workflows/ci.yml)
 ![SoC](https://img.shields.io/badge/SoC-MediaTek%20MT6890%20(T750)-orange)
-![Platforms](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows-lightgrey)
+![Platforms](https://img.shields.io/badge/platform-macOS%20%C2%B7%20Linux-lightgrey)
 [![License: GPL v2](https://img.shields.io/badge/license-GPL--2.0--only-blue.svg)](LICENSE)
 
 [Warning](#warning) · [What it does](#what-it-does) · [Install](#install-and-run) · [The steps](#the-steps) · [Safety model](#safety-model) · [Build](#build-the-binary-and-the-packages) · [Layout](#repository-layout) · [Tests](#tests)
@@ -48,22 +48,20 @@ Download the package for your system from the [releases page](https://github.com
 | System | Package | Install |
 |---|---|---|
 | Linux x86_64 | `X28-Flasher-linux-x86_64.deb` | `sudo apt install ./X28-Flasher-linux-x86_64.deb`, then **X28 Flasher** in the menu or `x28-flasher` |
-| Windows x64 | `X28-Flasher-windows-x64-setup.exe` | run it (no administrator rights), then **X28 Flasher** in the Start menu |
 | macOS, Apple silicon | `X28-Flasher-macos-arm64.dmg` | drag **X28 Flasher** to Applications; the app is not signed, so the first start is right-click, **Open** |
 
 Every merge to `main` is a release: CI builds the packages and attaches them with a `SHA256SUMS-*.txt` each. CI has no macOS runner
 while this repository is private ([#3](https://github.com/mralinp/x28-flasher/issues/3)), so the `.dmg` is only in a release when
 that job ran; otherwise [build it](#build-the-binary-and-the-packages) on a Mac.
 
-On a Mac the app has its own window; on Linux and Windows it opens the page in your browser. Only this computer can reach the page;
+On a Mac the app has its own window; on Linux it opens the page in your browser. Only this computer can reach the page;
 its **Quit** button stops the flasher.
 
-Two steps use more than the package:
+**Building an image from your backup** and **Root access** assemble the image in a container, so those two steps need Docker.
+Downloading a release's signed image and flashing it needs none.
 
-- **Building an image from your backup** and **Root access** assemble the image in a container, so they need Docker. Downloading a
-  release's signed image and flashing it needs none.
-- **Windows** needs a USB driver that libusb can use for the modem's download port (mtkclient uses [UsbDk](https://github.com/daynix/UsbDk/releases)).
-  The Windows package is built and smoke-tested by CI but has not been used on a modem yet.
+**Windows is not supported yet.** The page runs each tool in a Unix terminal (`pty`) and talks to its modem session over a Unix
+socket, and neither exists on Windows, so the CI Windows job is red and no Windows package is released.
 
 **From the checkout** instead (for work on the tools; needs Python 3.10+ and libusb, `brew install libusb` on a Mac):
 
@@ -102,14 +100,13 @@ Details, prompts and recovery are in **[the manual](docs/USAGE.md)**: what each 
 
 ## Build the binary and the packages
 
-This is what CI does (`.github/workflows/ci.yml`), on the system you build for: there is no cross-building. On Windows run the
-commands in Git Bash and use `bh/venv/Scripts/python` wherever `bh/venv/bin/python` is written.
+This is what CI does (`.github/workflows/ci.yml`), on the system you build for: there is no cross-building.
 
 **1. Once: libusb, the pinned mtkclient and a build venv in `bh/`**
 
 ```bash
 brew install libusb                               # macOS
-sudo apt-get install -y libusb-1.0-0              # Linux; Windows gets its DLL from pip below
+sudo apt-get install -y libusb-1.0-0              # Linux
 
 COMMIT="$(python3 -c "import sys; sys.path.insert(0, 'tools/recovery'); import common; print(common.MTKCLIENT_COMMIT)")"
 mkdir -p bh/src && git -C bh/src init -q
@@ -117,7 +114,6 @@ git -C bh/src fetch -q --depth 1 https://github.com/bkerler/mtkclient.git "$COMM
 git -C bh/src -c advice.detachedHead=false checkout -q FETCH_HEAD
 python3 -m venv bh/venv
 bh/venv/bin/python -m pip install pycryptodome pycryptodomex pyserial pyusb colorama questionary pyinstaller
-bh/venv/bin/python -m pip install libusb          # Windows only
 ```
 
 **2. The binary** (`dist/x28-flasher/`, one folder that runs as it is)
@@ -141,9 +137,6 @@ hdiutil create -volname "X28 Flasher" -srcfolder "dist/X28 Flasher.app" -ov -for
 
 # Linux: the .deb (installs to /opt/x28-flasher, with a menu entry and /usr/bin/x28-flasher)
 tools/x28-flasher/installers/make_deb.sh dist 0.1.0 X28-Flasher-linux-x86_64.deb
-
-# Windows: X28-Flasher-windows-x64-setup.exe (Inno Setup 6: choco install innosetup)
-"/c/Program Files (x86)/Inno Setup 6/ISCC.exe" "//DSrc=$(cygpath -w "$PWD/dist/x28-flasher")" "//DOut=$(cygpath -w "$PWD")" "//DVersion=0.1.0" tools/x28-flasher/installers/windows.iss
 ```
 
 Build again after every `git pull`; `dist/`, `bh/` and `private/` are ignored by git and stay in the checkout. A build contains
@@ -169,8 +162,8 @@ export X28_OVERLAY=/path/to/zlt-x28-openwrt      # first_boot.py reads the packa
 for t in tools/build/test_*.py tools/recovery/test_*.py tools/x28-flasher/test_*.py; do python3 "$t" || break; done
 ```
 
-CI runs them on Linux x86_64 and Windows x64 (and macOS arm64 when it has a runner), then builds the binary and the package and
-smoke-tests the binary.
+CI runs them on Linux x86_64 (and macOS arm64 when it has a runner), then builds the binary and the package and smoke-tests the
+binary. The Windows job stops in the tests until the app is ported.
 
 ## Support
 
