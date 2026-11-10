@@ -59,7 +59,7 @@ def host_identity():
                 raise ValueError('pinned source patch target changed')
             continue
         expected = expected.replace(old, new)
-    installed = list((MTK_HOME / 'venv').glob('lib/python*/site-packages/' + XML))
+    installed = list((MTK_HOME / 'venv').glob('**/site-packages/' + XML))  # lib/python3.x/ on POSIX, Lib/ on Windows, as build_binary finds it
     if len(installed) != 1 or installed[0].read_text() != expected:
         raise ValueError('installed XML library is not exactly pinned source plus reviewed patches; run setup_mtkclient.py')
     return expected
