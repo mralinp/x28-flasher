@@ -9,6 +9,7 @@ Back up and flash your **ZLT X28 5G modem (MediaTek MT6890 / T750)** from a desk
 [Download](https://github.com/mralinp/x28-flasher/releases) · [Quick start](#quick-start) · [Full guide](docs/USAGE.md) · [Contribute](CONTRIBUTING.md)
 
 [![Latest release](https://img.shields.io/github/v/release/mralinp/x28-flasher?include_prereleases&sort=semver&label=latest%20release)](https://github.com/mralinp/x28-flasher/releases)
+[![Downloads](https://img.shields.io/github/downloads/mralinp/x28-flasher/total)](https://github.com/mralinp/x28-flasher/releases)
 [![Supported systems: macOS, Linux and Windows](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey)](#install)
 [![CI](https://github.com/mralinp/x28-flasher/actions/workflows/ci.yml/badge.svg)](https://github.com/mralinp/x28-flasher/actions/workflows/ci.yml)
 
