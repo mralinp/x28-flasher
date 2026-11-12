@@ -222,7 +222,7 @@ jobs:
           runuser -u builder -- env SRCDEST="$srcdest" bash -c \
             'cd "$1" && makepkg --syncdeps --noconfirm --cleanbuild' _ "$work"
 
-          package="$(find "$work" -maxdepth 1 -type f -name '*.pkg.tar.zst' -print -quit)"
+          package="$(find "$work" -maxdepth 1 -type f -name '*.pkg.tar.zst' ! -name '*-debug-*' -print -quit)"
           test -n "$package"
           pacman -U --noconfirm "$package"
           runuser -u builder -- env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" bash -c \
