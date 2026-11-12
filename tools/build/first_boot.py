@@ -52,8 +52,8 @@ KMOD_PACKAGES = {'kmod-wireguard':('wireguard',),'kmod-ipt-tproxy':('x28_udp_loo
 STUBS = ROOT/'package/x28-kmod-stubs/stubs.txt'
 FEED_KEY = ROOT/'package/x28-feed/files/x28-feed.pub'
 FEED_KEY_ID = '7fec994ab0d15b97'
-# The newest feed release: a stable URL, so images never need another feed line (mralinp/zlt-x28-openwrt#396).
-FEED_LINE = 'src/gz x28 https://github.com/mralinp/zlt-x28-openwrt/releases/latest/download\n'
+# Pinned: since v1.0.0 GitHub's latest release is firmware, which carries no package index (mralinp/zlt-x28-openwrt#547, #548). Bump with each new feed-N.
+FEED_LINE = 'src/gz x28 https://github.com/mralinp/zlt-x28-openwrt/releases/download/feed-3\n'
 KERNEL_VERSION = '1:4.19.205-x28'
 PASSWALL2_DEFAULT = 'usr/share/passwall2/0_default_config'
 PASSWALL_KEY_ID = '0abda65a492b4887'
