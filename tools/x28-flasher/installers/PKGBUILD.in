@@ -4,6 +4,8 @@ pkgver=@VERSION@
 pkgrel=1
 pkgdesc='Back up, build and flash the ZLT X28 5G modem over USB'
 arch=('x86_64')
+# A prebuilt bundle: stripping would corrupt the PyInstaller executable, and no -debug package must be split off (CI picked it up).
+options=('!strip' '!debug')
 url='https://github.com/mralinp/x28-flasher'
 license=('GPL-3.0-only')
 depends=(
