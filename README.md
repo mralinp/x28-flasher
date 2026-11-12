@@ -33,12 +33,13 @@ Each supported platform has its own desktop window.
 | Windows 10 (1809+) / 11, x64 | `X28-Flasher-windows-x64-setup.exe` | Run setup, then open **X28 Flasher** from Start. |
 | macOS, Apple silicon | `X28-Flasher-macos-arm64.dmg` | Drag the app to Applications. If blocked, use **System Settings → Privacy & Security → Open Anyway**. |
 | Linux x86_64, Debian/Ubuntu-compatible | `X28-Flasher-linux-x86_64.deb` | Run `sudo apt install ./X28-Flasher-linux-x86_64.deb`, then open **X28 Flasher** from the menu. |
+| Arch Linux, x86_64 | `X28-Flasher-archlinux-x86_64.pkg.tar.zst` | Install the dependencies with `sudo pacman -S --needed gtk3 hicolor-icon-theme libusb openssh python python-gobject webkit2gtk-4.1`, then run `sudo pacman -U ./X28-Flasher-archlinux-x86_64.pkg.tar.zst`. |
 
 No cloning, pip setup or separate download agent is needed. The modem tools and `DA_BR.bin` are bundled.
 
 - **macOS:** the bundle is ad-hoc signed, not Apple-notarized, so Gatekeeper may require **Open Anyway**. A “damaged” message is a separate issue—see [troubleshooting](docs/USAGE.md#troubleshooting).
 - **Windows:** setup installs WebView2 if missing (internet required). The modem's download interface may also need a compatible WinUSB driver.
-- **Linux:** APT installs the GTK/WebKit dependencies. Tested on Ubuntu 22.04; WebKitGTK 4.1 must be available, as on Debian 12+.
+- **Linux:** The Debian package declares GTK/WebKitGTK 4.1 and OpenSSH dependencies. The Arch package declares GTK3, WebKitGTK 4.1, PyGObject, libusb and OpenSSH; both include the native desktop launcher.
 - **Docker is only needed** for **Build from my backup** and **Root access**. Downloading and flashing a signed image needs no Docker.
 - **Boot order** needs root SSH access to the running modem and an OpenSSH client on your computer. See the [full guide](docs/USAGE.md#boot-order).
 
