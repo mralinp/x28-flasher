@@ -48,6 +48,11 @@ def main():
                     "$s = Get-AuthenticodeSignature -LiteralPath $env:X28_WEBVIEW2_SETUP; "
                     "if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') { throw 'Invalid WebView2 installer signature' }"],
                    env={**os.environ, 'X28_WEBVIEW2_SETUP': str(bootstrapper)}, check=True)
+    # UsbDk gives libusb access to the modem's MediaTek boot-mode USB device (0e8d:0003); without it Windows shows nothing for the modem.
+    usbdk = args.dist.resolve() / 'UsbDk.msi'
+    urllib.request.urlretrieve('https://github.com/daynix/UsbDk/releases/download/v1.00-22/UsbDk_1.0.22_x64.msi', usbdk)
+    got = hashlib.sha256(usbdk.read_bytes()).hexdigest()
+    assert got == '91f6f695e1e13c656024e6d3b55620bf08d8835ef05ee0496935ba6bb62466a5', f'UsbDk installer hash mismatch: {got}'
     print(f'built {out / "X28 Flasher.exe"}')
 
 

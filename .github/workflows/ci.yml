@@ -203,7 +203,7 @@ jobs:
           pacman -Syu --noconfirm --needed base-devel sudo shadow dbus xorg-server-xvfb
           useradd --create-home --shell /bin/bash builder
           install -d -m 750 /etc/sudoers.d
-          printf 'builder ALL=(ALL:ALL) NOPASSWD: ALL\\n' > /etc/sudoers.d/builder
+          printf 'builder ALL=(ALL:ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builder
           chmod 440 /etc/sudoers.d/builder
 
           work="$RUNNER_TEMP/arch-build"
@@ -213,19 +213,19 @@ jobs:
           test -s "$archive"
           install -m 644 "$archive" "$srcdest/x28-flasher-$VERSION.tar.gz"
           checksum="$(sha256sum "$archive" | cut -d ' ' -f1)"
-          sed \\
-            -e "s/@VERSION@/$VERSION/g" \\
-            -e "s/@SHA256@/$checksum/g" \\
+          sed \
+            -e "s/@VERSION@/$VERSION/g" \
+            -e "s/@SHA256@/$checksum/g" \
             tools/x28-flasher/installers/PKGBUILD.in > "$work/PKGBUILD"
 
           chown -R builder:builder "$work" "$srcdest"
-          runuser -u builder -- env SRCDEST="$srcdest" bash -c \\
+          runuser -u builder -- env SRCDEST="$srcdest" bash -c \
             'cd "$1" && makepkg --syncdeps --noconfirm --cleanbuild' _ "$work"
 
           package="$(find "$work" -maxdepth 1 -type f -name '*.pkg.tar.zst' -print -quit)"
           test -n "$package"
           pacman -U --noconfirm "$package"
-          runuser -u builder -- env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" bash -c \\
+          runuser -u builder -- env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" bash -c \
             'dbus-run-session -- xvfb-run -a env WEBKIT_DISABLE_COMPOSITING_MODE=1 python3 "$GITHUB_WORKSPACE/tools/x28-flasher/smoke_linux.py"'
 
           install -m 644 "$package" X28-Flasher-archlinux-x86_64.pkg.tar.zst
