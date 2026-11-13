@@ -51,6 +51,7 @@ def upgrade_problems(tree):
         bad.append(PLATFORM + ' without all of the pinned stage 2 files: ' + ', '.join(sorted(n for n in UPGRADE_PINNED if n not in tree)))
     for name in sorted(n for n in tree if n.startswith('lib/upgrade/') and not n.startswith('lib/upgrade/keep.d/')):
         info, data = tree[name]
+        if name == 'lib/upgrade/keep.d' and info.isdir():continue  # tar may include the backup-list directory itself
         if not info.isfile():bad.append(name + ' (not a regular file)');continue
         if name in UPGRADE_PINNED:
             if hashlib.sha256(data).hexdigest() != UPGRADE_PINNED[name]:bad.append(name + ' (differs from the reviewed OpenWrt 23.05.5 file)')

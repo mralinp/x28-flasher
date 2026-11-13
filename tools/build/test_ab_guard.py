@@ -117,6 +117,17 @@ class GuardTests(unittest.TestCase):
         finally:
             g.UPGRADE_PINNED.clear();g.UPGRADE_PINNED.update(real)
 
+    def test_keep_d_directory_entry_is_allowed_but_not_a_file_or_link(self):
+        name='lib/upgrade/keep.d'
+        for kind in (tarfile.DIRTYPE,tarfile.REGTYPE,tarfile.SYMTYPE,tarfile.LNKTYPE):
+            with self.subTest(kind=kind):
+                t=tree({**BASE,'lib/upgrade/keep.d/base-files':b'/etc/config/\n'},LINK)
+                info=tarfile.TarInfo(name);info.type=kind;info.linkname='base-files'
+                t[name]=(info,b'')
+                if kind==tarfile.DIRTYPE:g.check(t)
+                else:
+                    with self.assertRaises(ValueError):g.check(t)
+
     def test_the_pins_are_the_openwrt_23_05_5_files(self):
         self.assertEqual(sorted(g.UPGRADE_PINNED),['lib/upgrade/common.sh','lib/upgrade/do_stage2','lib/upgrade/fwtool.sh','lib/upgrade/stage2'])
         self.assertTrue(all(len(v)==64 for v in g.UPGRADE_PINNED.values()))
