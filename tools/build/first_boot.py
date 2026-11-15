@@ -56,6 +56,8 @@ FEED_KEY_ID = '7fec994ab0d15b97'
 FEED_LINE = 'src/gz x28 https://github.com/mralinp/zlt-x28-openwrt/releases/download/feed-3\n'
 KERNEL_VERSION = '1:4.19.205-x28'
 PASSWALL2_DEFAULT = 'usr/share/passwall2/0_default_config'
+LUCI_THEME_DEFAULT = 'etc/uci-defaults/30_luci-theme-bootstrap'
+LUCI_THEMES = (('Bootstrap','bootstrap'),('BootstrapDark','bootstrap-dark'),('BootstrapLight','bootstrap-light'))
 PASSWALL_KEY_ID = '0abda65a492b4887'
 PASSWALL_FEEDS = ''.join(f'src/gz {n} https://master.dl.sourceforge.net/project/openwrt-passwall-build/releases/packages-23.05/aarch64_generic/{n}\n'
                          for n in ('passwall2','passwall_packages'))
@@ -312,6 +314,11 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
     def put(name,text,mode=0o644):
         info=tarfile.TarInfo(name);info.mode=mode;info.uid=info.gid=0
         data=text.encode();info.size=len(data);tree[name]=(info,data)
+    if LUCI_THEME_DEFAULT in removed:  # what its uci-defaults would do, which this profile strips: without the entries LuCI's System page cannot be saved (#124)
+        section='config internal themes\n'
+        meta,data=tree.get('etc/config/luci',(None,b''));config=data.decode()
+        if config.count(section)!=1 or 'option Bootstrap' in config:raise ValueError('unexpected LuCI default config: themes')
+        put('etc/config/luci',config.replace(section,section+''.join(f"\toption {name} '/luci-static/{path}'\n" for name,path in LUCI_THEMES)),meta.mode)
     if 'lib/preinit/00_preinit.conf' in tree:
         config=tree['lib/preinit/00_preinit.conf'][1].decode()
         put('lib/preinit/00_preinit.conf',config+'\npi_preinit_no_failsafe="y"\n')
