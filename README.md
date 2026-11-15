@@ -78,3 +78,5 @@ Donations on any EVM chain: `0x6743d8fe71f18b3101f3086e8d9f8d272d0f7618`.
 ## License
 
 See [LICENSE](LICENSE). Bundled third-party components retain their own license terms.
+
+Native-image hotfix: preserve regular `/lib/upgrade/keep.d/` backup lists during staging and management integration; enable `x28-telephony` at boot when its init script is installed. Upgrade hooks remain restricted to the reviewed implementations.

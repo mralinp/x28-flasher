@@ -77,7 +77,7 @@ class PolicyTests(unittest.TestCase):
                               'etc/uci-defaults/99-unsafe':b'mtd write', 'etc/rc.local':b'mtd write',
                               'etc/fstab':b'/dev/other /data ubifs rw 0 0',
                               'etc/rc.d/S99zmtk_boot_done':b'unsafe', 'etc/board.d/02_network':b'generic',
-                              'lib/upgrade/platform.sh':b'unsafe', 'lib/preinit/79_move_config':b'. /lib/upgrade/common.sh', **STAGE2, 'lib/preinit/99_10_failsafe_login':b'ash --login', 'lib/preinit/00_preinit.conf':b'pi_preinit_no_failsafe=""\n','lib/libc.so':b'musl','bin/ash':b'busybox'}.items():put(t,name,data)
+                              'lib/upgrade/keep.d/base-files':b'/etc/config/\n/etc/dropbear/\n', 'lib/upgrade/platform.sh':b'unsafe', 'lib/preinit/79_move_config':b'. /lib/upgrade/common.sh', **STAGE2, 'lib/preinit/99_10_failsafe_login':b'ash --login', 'lib/preinit/00_preinit.conf':b'pi_preinit_no_failsafe=""\n','lib/libc.so':b'musl','bin/ash':b'busybox'}.items():put(t,name,data)
             m=tarfile.TarInfo('etc/rc.d/S19dropbear');m.type=tarfile.SYMTYPE;m.linkname='../init.d/dropbear';t.addfile(m)
             m=tarfile.TarInfo('etc/rc.d/S20network');m.type=tarfile.SYMTYPE;m.linkname='../init.d/network';t.addfile(m)
         (self.stage/'manifest.json').write_text(json.dumps({'flashable':False,'archive_sha256':f.digest(self.archive.read_bytes())}))
@@ -104,6 +104,7 @@ class PolicyTests(unittest.TestCase):
         ours=f.SYSUPGRADE/'lib/upgrade/platform.sh'  # the stock one is gone; ours comes from the bundle when it carries it
         if ours.is_file():self.assertEqual(tree['lib/upgrade/platform.sh'][1],ours.read_bytes())
         else:self.assertNotIn('lib/upgrade/platform.sh',tree)
+        self.assertEqual(tree['lib/upgrade/keep.d/base-files'][1],b'/etc/config/\n/etc/dropbear/\n')
         self.assertNotIn('lib/preinit/79_move_config',tree)
         for stage2 in STAGE2:self.assertIn(stage2,tree)
         self.assertNotIn('etc/uci-defaults/99-unsafe',tree)
@@ -203,11 +204,12 @@ class PolicyTests(unittest.TestCase):
                                   ('./control.tar.gz',tgz([('./control',f'Package: {name}\nVersion: 1\nArchitecture: all\n'.encode())]+list(extra)))]))
             return path
         inits=[ipk(n,[(f'./etc/init.d/{n}',f'#!/bin/sh /etc/rc.common\nSTART={s}\n'.encode())]+([('./etc/board.json',b'{"switch":{}}\n')] if n=='x28-switch' else []),[('./prerm',b'#!/bin/sh\nexit 0\n')])
-               for n,s in (('x28-modem',19),('x28-leds',99),('x28-bootok',96),('x28-dhcp',96),('x28-wps',97),('x28-wifi-l1','05'),('x28-kmods',97),('x28-switch',18))]
+               for n,s in (('x28-modem',19),('x28-leds',99),('x28-bootok',96),('x28-dhcp',96),('x28-wps',97),('x28-wifi-l1','05'),('x28-kmods',97),('x28-switch',18),('x28-telephony',95))]
         storage=ipk('x28-storage',[('./etc/config/fstab',b'mine\n')],[('./conffiles',b'/etc/config/fstab\n')])
         mods=self.root/'mods';mods.mkdir();(mods/'wireguard.ko').write_bytes(b'wg')
         f.integrate(self.stage,self.key,self.stock,self.output,mods,inits+[storage,ipk('x28-base')])
         tree=f.load_archive(self.output/'rootfs-management.tar.gz');status=tree['usr/lib/opkg/status'][1].decode()
+        self.assertEqual(tree['etc/rc.d/S95x28-telephony'][0].linkname,'../init.d/x28-telephony')
         self.assertEqual(tree['etc/config/fstab'][1],b'mine\n')  # the package's file, not the overlay's
         self.assertIn('Conffiles:\n /etc/config/fstab '+f.digest(b'mine\n')+'\nStatus:',status)
         self.assertEqual(tree['etc/rc.d/S99x28-leds'][0].linkname,'../init.d/x28-leds');self.assertIn('etc/rc.d/S05x28-wifi-l1',tree)

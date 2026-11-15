@@ -64,11 +64,12 @@ class StageTests(unittest.TestCase):
         self.addCleanup(lambda:(s.UPGRADE_PINNED.clear(),s.UPGRADE_PINNED.update(old)))
         s.UPGRADE_PINNED['lib/upgrade/common.sh']=s.digest(good)
         archive(self.modern, {'./usr/lib/opkg/status':b'Package: kernel\nVersion: 5.15\n\nPackage: base-files\nVersion: new\n\n',
-                './lib/upgrade/common.sh':good,'./lib/upgrade/do_stage2':b'changed','./lib/upgrade/platform.sh':b'stock platform',
+                './lib/upgrade/keep.d/base-files':b'/etc/config/\n', './lib/upgrade/common.sh':good,'./lib/upgrade/do_stage2':b'changed','./lib/upgrade/platform.sh':b'stock platform',
                 './lib/upgrade/nand.sh':b'mtd write','./bin/ash':('busybox',),'./bin/busybox':b'modern'})
         report=s.stage(self.stock, self.modern, [], self.output, roots=[])
         with tarfile.open(self.output/'rootfs-staging.tar.gz') as t:
             names=t.getnames()
+            self.assertIn('lib/upgrade/keep.d/base-files',names)
             self.assertIn('lib/upgrade/common.sh',names)
             for gone in ('lib/upgrade/do_stage2','lib/upgrade/platform.sh','lib/upgrade/nand.sh'):self.assertNotIn(gone,names)
         self.assertEqual(sorted(report['removed_upgrade_paths']),['lib/upgrade/do_stage2','lib/upgrade/nand.sh','lib/upgrade/platform.sh'])

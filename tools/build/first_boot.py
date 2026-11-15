@@ -18,7 +18,7 @@ import sys
 import tarfile
 
 from ab_guard import check as ab_check
-from stage_native import UPGRADE_PINNED, digest, load_archive, resolve, validate_parents
+from stage_native import backup_list, UPGRADE_PINNED, digest, load_archive, resolve, validate_parents
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'firmware'))
 from inventory import elf_dynamic
@@ -27,7 +27,7 @@ from inventory import elf_dynamic
 ROOT = Path(os.environ.get('X28_OVERLAY') or Path(__file__).resolve().parents[2]/'overlay')
 
 # S80ucitrack: LuCI's apply restarts non-procd services such as Passwall2 only through its triggers (#198).
-ALLOWED_START = {'S00urngd','S05x28-wifi-l1','S80ucitrack','S10boot','S10system','S11sysctl','S12log','S18x28-switch','S12rpcd','S19firewall','S19x28-modem','S19dropbear','S19dnsmasq','S20network','S35odhcpd','S50uhttpd','S95done','S96x28-bootok','S96x28-dhcp','S97x28-wps','S99x28-leds'}
+ALLOWED_START = {'S00urngd','S05x28-wifi-l1','S80ucitrack','S10boot','S10system','S11sysctl','S12log','S18x28-switch','S12rpcd','S19firewall','S19x28-modem','S19dropbear','S19dnsmasq','S20network','S35odhcpd','S50uhttpd','S95done','S95x28-telephony','S96x28-bootok','S96x28-dhcp','S97x28-wps','S99x28-leds'}
 ALLOWED_STOP = {'K50dropbear','K89log','K90boot','K90network','K90umount'}
 
 LAN = 'br-lan'
@@ -293,6 +293,7 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
         if name not in stock or not stock[name][0].isfile():raise ValueError('missing stock Wi-Fi profile: '+name)
         tree[name]=stock[name]
     for name in list(tree):
+        if backup_list(name, tree[name]):continue  # backup rules are data, not upgrade hooks
         if name in UPGRADE_PINNED and digest(tree[name][1])==UPGRADE_PINNED[name]:continue  # the reviewed stage 2 (#81)
         if (name.startswith(('etc/rc.d/','etc/uci-defaults/','etc/board.d/','lib/upgrade/','etc/dropbear/'))
             or 'zmtk_boot_done' in name or name=='lib/preinit/79_move_config'  # sources /lib/upgrade/common.sh at boot (#81); only for block-device boots
@@ -480,6 +481,7 @@ config dhcp 'wan'
                 if not m.isdir():files.append(name)
         record(control,files,scripts,[c.lstrip('/') for c in conffiles])
     for start,service,stop in pending:enable(start,service,stop)
+    if 'etc/init.d/x28-telephony' in tree:enable(95,'x28-telephony')
     # The vendor kernel has these built in or as stock modules; record them so opkg sees every dependency met (#200).
     status=tree['usr/lib/opkg/status'][1].decode()
     have=set(re.findall(r'^Package: (.+)$',status,re.M))|{p.strip().split(' ')[0] for v in re.findall(r'^Provides: (.+)$',status,re.M) for p in v.split(',')}
