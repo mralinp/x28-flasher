@@ -74,7 +74,7 @@ class PolicyTests(unittest.TestCase):
                               'sbin/ujail':b'jail', 'usr/lib/opkg/info/procd-ujail.list':b'/sbin/ujail',
                               'usr/lib/opkg/status':b'Package: procd\nStatus: installed\n\nPackage: procd-ujail\nStatus: installed\n\nPackage: zlib\n\nPackage: kernel\nVersion: 4.19.205-1\n\nPackage: kmod-old\nVersion: 4.19.205-1\n\n',
                               'usr/lib/opkg/info/kmod-old.list':b'/lib/modules/old.ko', 'usr/lib/opkg/info/kernel.prerm':b'old', 'etc/opkg/customfeeds.conf':b'# custom\n',
-                              'etc/uci-defaults/99-unsafe':b'mtd write', 'etc/rc.local':b'mtd write',
+                              'etc/uci-defaults/99-unsafe':b'mtd write', f.LUCI_THEME_DEFAULT:b'uci set luci.themes.Bootstrap=/luci-static/bootstrap', 'etc/config/luci':b'config core main\n\toption mediaurlbase /luci-static/bootstrap\n\nconfig internal themes\n\nconfig internal apply\n\toption rollback 90\n', 'etc/rc.local':b'mtd write',
                               'etc/fstab':b'/dev/other /data ubifs rw 0 0',
                               'etc/rc.d/S99zmtk_boot_done':b'unsafe', 'etc/board.d/02_network':b'generic',
                               'lib/upgrade/keep.d/base-files':b'/etc/config/\n/etc/dropbear/\n', 'lib/upgrade/platform.sh':b'unsafe', 'lib/preinit/79_move_config':b'. /lib/upgrade/common.sh', **STAGE2, 'lib/preinit/99_10_failsafe_login':b'ash --login', 'lib/preinit/00_preinit.conf':b'pi_preinit_no_failsafe=""\n','lib/libc.so':b'musl','bin/ash':b'busybox'}.items():put(t,name,data)
@@ -108,6 +108,8 @@ class PolicyTests(unittest.TestCase):
         self.assertNotIn('lib/preinit/79_move_config',tree)
         for stage2 in STAGE2:self.assertIn(stage2,tree)
         self.assertNotIn('etc/uci-defaults/99-unsafe',tree)
+        self.assertNotIn(f.LUCI_THEME_DEFAULT,tree)  # stripped, so its theme entries are written here (#124)
+        self.assertIn(b"config internal themes\n\toption Bootstrap '/luci-static/bootstrap'\n\toption BootstrapDark '/luci-static/bootstrap-dark'\n\toption BootstrapLight '/luci-static/bootstrap-light'\n\nconfig internal apply\n",tree['etc/config/luci'][1])
         self.assertNotIn('lib/preinit/99_10_failsafe_login',tree)
         self.assertIn(b'pi_preinit_no_failsafe="y"',tree['lib/preinit/00_preinit.conf'][1])
         self.assertEqual([l for l in tree['etc/inittab'][1].decode().splitlines() if 'askfirst' in l],['ttyS0::askfirst:/bin/ash --login'])
