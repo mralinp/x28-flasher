@@ -266,6 +266,18 @@ def have_libusb():
     return bool(ctypes.util.find_library("usb-1.0") or glob.glob("/opt/homebrew/lib/libusb-1.0*.dylib") or glob.glob("/usr/local/lib/libusb-1.0*.dylib"))
 
 
+def have_usbdk():
+    """Windows reaches the modem through the UsbDk driver (the installer adds it); other systems need nothing."""
+    if sys.platform != "win32":
+        return True
+    import winreg
+    try:
+        winreg.CloseKey(winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Services\UsbDk", 0, winreg.KEY_READ | winreg.KEY_WOW64_64KEY))
+        return True
+    except OSError:
+        return False
+
+
 def pick_path(kind, prompt):
     """A native chooser (macOS) so nobody types paths; the browser cannot give the page a real path."""
     if sys.platform != "darwin" or kind not in ("file", "folder"):
@@ -474,7 +486,7 @@ class App:
         job = self.current
         from common import MTK_HOME
         in_venv = fl.FROZEN or os.path.realpath(sys.prefix) == os.path.realpath(MTK_HOME / "venv")
-        setup = {"mtkclient": fl.FROZEN or fl.VENV_PY.exists(), "restart": not in_venv and fl.VENV_PY.exists(), "libusb": fl.FROZEN or have_libusb(),
+        setup = {"mtkclient": fl.FROZEN or fl.VENV_PY.exists(), "restart": not in_venv and fl.VENV_PY.exists(), "libusb": fl.FROZEN or have_libusb(), "usbdk": have_usbdk(),
                  "python": bool(fl.FROZEN or find_python()), "brew": bool(find_brew()), "mac": sys.platform == "darwin"}
         return {"version": app_version(), "frozen": fl.FROZEN, "setup": setup, "ports": ports, "loader": {"path": loader, "ok": Path(loader).is_file()},
                 "backup_out": str(fl.default_backup_dir()), "backup_dir": self.config().get("backup") or str(DEFAULT_BACKUP),

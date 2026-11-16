@@ -167,6 +167,10 @@ class SetupTests(unittest.TestCase):
         with unittest.mock.patch.object(gui, "find_python", return_value=None), self.assertRaises(ValueError):
             gui.build_command(FakeFl, "setup", {}, "DA")
 
+    def test_usbdk_only_matters_on_windows(self):
+        with unittest.mock.patch.object(gui.sys, "platform", "darwin"):
+            self.assertTrue(gui.have_usbdk())
+
     def test_libusb_needs_homebrew(self):
         with unittest.mock.patch.object(gui, "find_brew", return_value=None), self.assertRaises(ValueError):
             gui.build_command(FakeFl, "libusb", {}, "DA")
