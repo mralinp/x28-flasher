@@ -27,7 +27,7 @@ from inventory import elf_dynamic
 ROOT = Path(os.environ.get('X28_OVERLAY') or Path(__file__).resolve().parents[2]/'overlay')
 
 # S80ucitrack: LuCI's apply restarts non-procd services such as Passwall2 only through its triggers (#198).
-ALLOWED_START = {'S00urngd','S05x28-wifi-l1','S80ucitrack','S10boot','S10system','S11sysctl','S12log','S18x28-switch','S12rpcd','S19firewall','S19x28-modem','S19dropbear','S19dnsmasq','S20network','S35odhcpd','S50uhttpd','S95done','S95x28-telephony','S96x28-bootok','S96x28-dhcp','S97x28-wps','S99x28-leds'}
+ALLOWED_START = {'S00urngd','S05x28-wifi-l1','S80ucitrack','S10boot','S10system','S11sysctl','S12log','S18x28-switch','S18x28-wifi-client','S12rpcd','S19firewall','S19x28-modem','S19dropbear','S19dnsmasq','S20network','S35odhcpd','S50uhttpd','S95done','S95x28-telephony','S96x28-bootok','S96x28-dhcp','S97x28-wps','S99x28-leds'}
 ALLOWED_STOP = {'K50dropbear','K89log','K90boot','K90network','K90umount'}
 
 LAN = 'br-lan'
@@ -137,15 +137,22 @@ def luci_analysis(js):
 def luci_edits():
     """(anchor, replacement) pairs that make stock wireless.js handle mtwifi radios."""
     acs,auto="L.hasSystemFeature('hostapd','acs')","?['auto','auto',true]:[]"
-    return [(LUCI_ANCHOR,LUCI_MTWIFI+LUCI_ANCHOR),
+    modes="o.value('ap',_('Access Point'));o.value('sta',_('Client'));if(hwtype!='mtwifi'){o.value('adhoc',_('Ad-Hoc'));}"
+    if not (WIFI/'x28-wifi-client.init').is_file():
+        modes="o.value('ap',_('Access Point'));if(hwtype!='mtwifi'){o.value('sta',_('Client'));o.value('adhoc',_('Ad-Hoc'));}"
+    join="uci.set('wireless',section_id,'network',nameval);"
+    name_check="var s=uci.get('network',name);if(s!=null&&s['.type']!='interface')"
+    unique_name="var s=uci.get('network',name);if(s!=null&&(s['.type']!='interface'||uci.get('wireless',radioDev.getName(),'type')=='mtwifi'))"
+    return [(name_check,unique_name),(LUCI_ANCHOR,LUCI_MTWIFI+LUCI_ANCHOR),
             (LUCI_DEV_ANCHOR,LUCI_DEV_ANCHOR.replace("if(hwtype=='mac80211')",LUCI_MTWIFI_DEV+"if(hwtype=='mac80211')")),
             (LUCI_IFACE_ANCHOR,LUCI_MTWIFI_IFACE+LUCI_IFACE_ANCHOR),
             (LUCI_FREQ_ANCHOR,LUCI_FREQ_MTWIFI),
             ("'2g':"+acs+auto+",'5g':"+acs+auto+",","'2g':(mtw||"+acs+")"+auto+",'5g':(mtw||"+acs+")"+auto+","),
             ("L.hasSystemFeature('hostapd','11ac')&&hwmodelist.ac","(mtw||L.hasSystemFeature('hostapd','11ac'))&&hwmodelist.ac"),
             ("L.hasSystemFeature('hostapd','11ax')&&hwmodelist.ax","(mtw||L.hasSystemFeature('hostapd','11ax'))&&hwmodelist.ax"),
-            # The handler only sets up access points; client and ad-hoc come with #168.
-            (LUCI_MODE_ANCHOR,"o.value('ap',_('Access Point'));if(hwtype!='mtwifi'){o.value('sta',_('Client'));o.value('adhoc',_('Ad-Hoc'));}")]
+            # Client mode uses netifd's normal Scan/Join and interface editor; ad-hoc is unsupported.
+            (LUCI_MODE_ANCHOR,modes),
+            (join,join+"if(uci.get('wireless',radioDev.getName(),'type')=='mtwifi')uci.set('wireless',radioDev.getName(),'channel',String(bss.channel));")]
 
 
 def luci_mtwifi(js):
@@ -344,6 +351,10 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
     # The staged boot script runs `wifi config` once when /etc/config/wireless is missing: WPA2 with a random key.
     own('lib/netifd/wireless/mtwifi.sh',WIFI/'mtwifi.sh',0o755)
     own('lib/wifi/mtwifi.sh',WIFI/'mtwifi.detect')
+    if (WIFI/'x28-wifi-client.init').is_file():  # old release bundles do not have client mode
+        own('usr/libexec/x28-wifi-client',WIFI/'x28-wifi-client',0o755)
+        own('etc/hotplug.d/iface/90-x28-wifi-client',WIFI/'x28-wifi-client.hotplug')
+        own('etc/init.d/x28-wifi-client',WIFI/'x28-wifi-client.init',0o755);enable(18,'x28-wifi-client')
     own('usr/share/x28-wifi/regions',WIFI/'regions')
     own('usr/share/x28-wifi/channels5',WIFI/'channels5')
     if LUCI_WIRELESS in tree:put(LUCI_WIRELESS,luci_mtwifi(tree[LUCI_WIRELESS][1].decode()))

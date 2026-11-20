@@ -3,6 +3,7 @@ import base64
 import io
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 import struct
@@ -70,7 +71,7 @@ class PolicyTests(unittest.TestCase):
             for name,data in {'etc/inittab':b'ttyS0::askfirst:/bin/sh\n','etc/shadow':b'root:::0:99999:7:::\nservice:old:0:0:99999:7:::\n',
                               'etc/init.d/openvpn':b'openvpn', 'etc/init.d/dropbear':b'PasswordAuth RootPasswordAuth\n\tcommand "$PROG" -F\n', 'etc/init.d/network':b'network', 'etc/init.d/dnsmasq':b'dnsmasq', 'etc/init.d/odhcpd':b'odhcpd', 'etc/init.d/rpcd':b'rpcd', 'etc/init.d/done':b'mount_root done', 'etc/init.d/uhttpd':b'uhttpd', 'etc/init.d/firewall':b'firewall', 'etc/init.d/sysntpd':b'sysntpd',
                               f.LUCI_HEADERS[0]:b'<script src="{{ resource }}/luci.js?v=git-1.2-abc"></script>',
-                              'www/luci-static/resources/view/network/wireless.js':b"o.ucisection=s.section;if(hwtype=='mac80211'){o=ss.taboption('general',form.Flag,'legacy_rates'}\nif(hwtype=='mac80211'){var mode=ss.children[0],bssid=ss.children[5],encr;}\nif(hwtype=='mac80211'){x}\nelse if(hwtype=='broadcom'){y}\n.then(L.bind(function(data){this.channels={'2g':L.hasSystemFeature('hostapd','acs')?['auto','auto',true]:[],'5g':L.hasSystemFeature('hostapd','acs')?['auto','auto',true]:[],'6g':[]};m=[L.hasSystemFeature('hostapd','11ac')&&hwmodelist.ac,L.hasSystemFeature('hostapd','11ax')&&hwmodelist.ax]}));\no.value('ap',_('Access Point'));o.value('sta',_('Client'));o.value('adhoc',_('Ad-Hoc'));",
+                              'www/luci-static/resources/view/network/wireless.js':b"o.ucisection=s.section;if(hwtype=='mac80211'){o=ss.taboption('general',form.Flag,'legacy_rates'}\nif(hwtype=='mac80211'){var mode=ss.children[0],bssid=ss.children[5],encr;}\nif(hwtype=='mac80211'){x}\nelse if(hwtype=='broadcom'){y}\n.then(L.bind(function(data){this.channels={'2g':L.hasSystemFeature('hostapd','acs')?['auto','auto',true]:[],'5g':L.hasSystemFeature('hostapd','acs')?['auto','auto',true]:[],'6g':[]};m=[L.hasSystemFeature('hostapd','11ac')&&hwmodelist.ac,L.hasSystemFeature('hostapd','11ax')&&hwmodelist.ax]}));\no.value('ap',_('Access Point'));o.value('sta',_('Client'));o.value('adhoc',_('Ad-Hoc'));uci.set('wireless',section_id,'network',nameval);var s=uci.get('network',name);if(s!=null&&s['.type']!='interface')return true;",
                               'sbin/ujail':b'jail', 'usr/lib/opkg/info/procd-ujail.list':b'/sbin/ujail',
                               'usr/lib/opkg/status':b'Package: procd\nStatus: installed\n\nPackage: procd-ujail\nStatus: installed\n\nPackage: zlib\n\nPackage: kernel\nVersion: 4.19.205-1\n\nPackage: kmod-old\nVersion: 4.19.205-1\n\n',
                               'usr/lib/opkg/info/kmod-old.list':b'/lib/modules/old.ko', 'usr/lib/opkg/info/kernel.prerm':b'old', 'etc/opkg/customfeeds.conf':b'# custom\n',
@@ -163,7 +164,8 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("if(hwtype=='mtwifi'){o=ss.taboption('macfilter',form.ListValue,'macfilter'",js)
         self.assertIn("var mtw=data[0]&&data[0].get('type')=='mtwifi';",js)
         self.assertEqual(js.count('mtw||'),4)
-        self.assertIn("if(hwtype!='mtwifi'){o.value('sta'",js)
+        self.assertIn("uci.set('wireless',radioDev.getName(),'channel',String(bss.channel))",js)
+        self.assertIn("s['.type']!='interface'||uci.get('wireless',radioDev.getName(),'type')=='mtwifi'",js)
         self.assertEqual(f.luci_mtwifi(js),js)  # idempotent
         self.assertIn('luci.js?v=git-1.2-abc-'+f.luci_build_id(tree)+'"',tree[f.LUCI_HEADERS[0]][1].decode())
         changed=dict(tree);changed[f.LUCI_WIRELESS]=(tree[f.LUCI_WIRELESS][0],b'new')
@@ -194,6 +196,31 @@ class PolicyTests(unittest.TestCase):
         if not pkg.is_file():self.skipTest('the zlt-x28-openwrt checkout has no x28-switch package yet')
         self.assertEqual(pkg.read_text(),f.SWITCH_INIT)
 
+    def test_client_mode_and_service_follow_bundle_capability(self):
+        wifi=self.root/'wifi-fixture'
+        shutil.copytree(f.WIFI,wifi)
+        helpers=('x28-wifi-client','x28-wifi-client.init','x28-wifi-client.hotplug')
+        for name in helpers:(wifi/name).unlink(missing_ok=True)
+        with patch.object(f,'WIFI',wifi):
+            for enabled in (False,True):
+                with self.subTest(client_bundle=enabled):
+                    if enabled:
+                        for name in helpers:(wifi/name).write_text('#!/bin/sh\nSTART=18\n')
+                    output=self.root/('client-bundle' if enabled else 'legacy-bundle')
+                    f.integrate(self.stage,self.key,self.stock,output)
+                    tree=f.load_archive(output/'rootfs-management.tar.gz')
+                    js=tree[f.LUCI_WIRELESS][1].decode()
+                    client="o.value('sta',_('Client'));if(hwtype!='mtwifi'){o.value('adhoc'"
+                    legacy="if(hwtype!='mtwifi'){o.value('sta'"
+                    self.assertIn(client if enabled else legacy,js)
+                    self.assertNotIn(legacy if enabled else client,js)
+                    self.assertEqual(f.luci_mtwifi(js),js)
+                    for path in ('etc/rc.d/S18x28-wifi-client','etc/init.d/x28-wifi-client',
+                                 'usr/libexec/x28-wifi-client','etc/hotplug.d/iface/90-x28-wifi-client'):
+                        self.assertEqual(path in tree,enabled,path)
+                    if enabled:
+                        self.assertEqual(tree['etc/rc.d/S18x28-wifi-client'][0].linkname,'../init.d/x28-wifi-client')
+
     def test_packages_are_installed_as_packages_when_x28_base_is_among_them(self):
         def tgz(members):
             buf=io.BytesIO()
@@ -206,7 +233,7 @@ class PolicyTests(unittest.TestCase):
                                   ('./control.tar.gz',tgz([('./control',f'Package: {name}\nVersion: 1\nArchitecture: all\n'.encode())]+list(extra)))]))
             return path
         inits=[ipk(n,[(f'./etc/init.d/{n}',f'#!/bin/sh /etc/rc.common\nSTART={s}\n'.encode())]+([('./etc/board.json',b'{"switch":{}}\n')] if n=='x28-switch' else []),[('./prerm',b'#!/bin/sh\nexit 0\n')])
-               for n,s in (('x28-modem',19),('x28-leds',99),('x28-bootok',96),('x28-dhcp',96),('x28-wps',97),('x28-wifi-l1','05'),('x28-kmods',97),('x28-switch',18),('x28-telephony',95))]
+               for n,s in (('x28-modem',19),('x28-leds',99),('x28-bootok',96),('x28-dhcp',96),('x28-wps',97),('x28-wifi-l1','05'),('x28-wifi-client',18),('x28-kmods',97),('x28-switch',18),('x28-telephony',95))]
         storage=ipk('x28-storage',[('./etc/config/fstab',b'mine\n')],[('./conffiles',b'/etc/config/fstab\n')])
         mods=self.root/'mods';mods.mkdir();(mods/'wireguard.ko').write_bytes(b'wg')
         f.integrate(self.stage,self.key,self.stock,self.output,mods,inits+[storage,ipk('x28-base')])
