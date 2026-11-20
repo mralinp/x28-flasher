@@ -3,6 +3,7 @@ import base64
 import io
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 import struct
@@ -163,8 +164,6 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("if(hwtype=='mtwifi'){o=ss.taboption('macfilter',form.ListValue,'macfilter'",js)
         self.assertIn("var mtw=data[0]&&data[0].get('type')=='mtwifi';",js)
         self.assertEqual(js.count('mtw||'),4)
-        self.assertIn("o.value('sta',_('Client'));if(hwtype!='mtwifi'){o.value('adhoc'",js)
-        self.assertNotIn("if(hwtype!='mtwifi'){o.value('sta'",js)
         self.assertIn("uci.set('wireless',radioDev.getName(),'channel',String(bss.channel))",js)
         self.assertIn("s['.type']!='interface'||uci.get('wireless',radioDev.getName(),'type')=='mtwifi'",js)
         self.assertEqual(f.luci_mtwifi(js),js)  # idempotent
@@ -175,8 +174,6 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(f.luci_build_id(changed),f.luci_build_id(tree))  # only what browsers cache counts
         with self.assertRaises(ValueError):f.luci_version('changed LuCI','id')
         with self.assertRaises(ValueError):f.luci_mtwifi('changed LuCI')
-        self.assertIn('etc/rc.d/S18x28-wifi-client',tree)
-        self.assertIn('usr/libexec/x28-wifi-client',tree)
         self.assertIn('add_driver mtwifi',tree['lib/netifd/wireless/mtwifi.sh'][1].decode())
         self.assertIn('append DRIVERS "mtwifi"',tree['lib/wifi/mtwifi.sh'][1].decode())
         self.assertIn(b"option PasswordAuth 'on'",tree['etc/config/dropbear'][1])
@@ -198,6 +195,31 @@ class PolicyTests(unittest.TestCase):
         pkg=f.ROOT/'package/x28-switch/files/x28-switch.init'
         if not pkg.is_file():self.skipTest('the zlt-x28-openwrt checkout has no x28-switch package yet')
         self.assertEqual(pkg.read_text(),f.SWITCH_INIT)
+
+    def test_client_mode_and_service_follow_bundle_capability(self):
+        wifi=self.root/'wifi-fixture'
+        shutil.copytree(f.WIFI,wifi)
+        helpers=('x28-wifi-client','x28-wifi-client.init','x28-wifi-client.hotplug')
+        for name in helpers:(wifi/name).unlink(missing_ok=True)
+        with patch.object(f,'WIFI',wifi):
+            for enabled in (False,True):
+                with self.subTest(client_bundle=enabled):
+                    if enabled:
+                        for name in helpers:(wifi/name).write_text('#!/bin/sh\nSTART=18\n')
+                    output=self.root/('client-bundle' if enabled else 'legacy-bundle')
+                    f.integrate(self.stage,self.key,self.stock,output)
+                    tree=f.load_archive(output/'rootfs-management.tar.gz')
+                    js=tree[f.LUCI_WIRELESS][1].decode()
+                    client="o.value('sta',_('Client'));if(hwtype!='mtwifi'){o.value('adhoc'"
+                    legacy="if(hwtype!='mtwifi'){o.value('sta'"
+                    self.assertIn(client if enabled else legacy,js)
+                    self.assertNotIn(legacy if enabled else client,js)
+                    self.assertEqual(f.luci_mtwifi(js),js)
+                    for path in ('etc/rc.d/S18x28-wifi-client','etc/init.d/x28-wifi-client',
+                                 'usr/libexec/x28-wifi-client','etc/hotplug.d/iface/90-x28-wifi-client'):
+                        self.assertEqual(path in tree,enabled,path)
+                    if enabled:
+                        self.assertEqual(tree['etc/rc.d/S18x28-wifi-client'][0].linkname,'../init.d/x28-wifi-client')
 
     def test_packages_are_installed_as_packages_when_x28_base_is_among_them(self):
         def tgz(members):
