@@ -159,6 +159,9 @@ class PolicyTests(unittest.TestCase):
         for name in ('lib/netifd/proto/x28_mipc.sh','sbin/x28-apn','www/luci-static/resources/protocol/x28_mipc.js','usr/share/rpcd/acl.d/luci-proto-x28-mipc.json'):self.assertIn(name,tree)
         self.assertEqual(tree['lib/netifd/proto/x28_mipc.sh'][0].mode,0o755)
         self.assertIn("config interface 'wan'\n option proto 'x28_mipc'",net)
+        has6=(f.MIPC/'x28_mipc6.sh').is_file()  # standard wan + wan6 (#648), only with an overlay that ships the handler
+        self.assertEqual("config interface 'wan6'\n option proto 'x28_mipc6'\n option device '@wan'" in net,has6)
+        self.assertEqual('lib/netifd/proto/x28_mipc6.sh' in tree,has6)
         self.assertIn(" option hostname 'x28'",tree['etc/config/system'][1].decode())
         for name in f.WIFI_PROFILES:self.assertEqual(tree[name][1],b'Default\nSSID1=stock\n')
         self.assertIn('"/productinfo"',f.luci_storage(f.LUCI_SKIP_ANCHOR))

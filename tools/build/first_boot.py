@@ -195,6 +195,8 @@ def luci_version(ut,build):
 WIFI_PROFILES = ('etc/wireless/l1profile.dat','etc/wireless/mediatek/mt7915.dbdc.b0.dat','etc/wireless/mediatek/mt7915.dbdc.b1.dat')
 # vlan: (ports, untagged port whose PVID is that vlan). Sockets LAN 2 to 4 are switch ports 1, 2, 4; port 0 has no socket (zlt-x28-openwrt#642).
 SWITCH = {1:('1 5t',1),2:('2 5t',2),3:('4 5t',4)}
+# wan6 next to wan (zlt-x28-openwrt#648): the cellular IPv6 as its own interface; only when the package ships its handler.
+WAN6_UCI = "\nconfig interface 'wan6'\n option proto 'x28_mipc6'\n option device '@wan'\n" if (MIPC/'x28_mipc6.sh').is_file() else ''
 SWITCH_UCI = "\nconfig switch\n option name 'switch0'\n option reset '1'\n option enable_vlan '1'\n" + ''.join(
     f"\nconfig switch_vlan\n option device 'switch0'\n option vlan '{v}'\n option vid '{v}'\n option ports '{ports}'\n"
     f"\nconfig switch_port\n option device 'switch0'\n option port '{port}'\n option pvid '{v}'\n"
@@ -409,6 +411,7 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
     if LUCI_ANALYSIS in tree:put(LUCI_ANALYSIS,luci_analysis(tree[LUCI_ANALYSIS][1].decode()))
     # Cellular WAN as a stock-looking netifd protocol (#135): the proto handler, its APN helper and the LuCI form.
     own('lib/netifd/proto/x28_mipc.sh',MIPC/'x28_mipc.sh',0o755)
+    if (MIPC/'x28_mipc6.sh').is_file():own('lib/netifd/proto/x28_mipc6.sh',MIPC/'x28_mipc6.sh',0o755)
     own('sbin/x28-apn',MIPC/'x28-apn',0o755)
     for name in ('x28-modem-status','x28-plmn-scan'):  # the LuCI Carrier tab runs these through rpcd (its ACL names them); releases before v0.54 lack them
         if (MIPC/name).is_file():own('sbin/'+name,MIPC/name,0o755)
@@ -604,7 +607,7 @@ config interface 'lan'
 
 config interface 'wan'
  option proto 'x28_mipc'
-"""+SWITCH_UCI)
+"""+WAN6_UCI+SWITCH_UCI)
     put('etc/config/dropbear',"""config dropbear
  option PasswordAuth 'on'
  option RootPasswordAuth 'on'
