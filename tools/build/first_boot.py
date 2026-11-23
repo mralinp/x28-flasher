@@ -27,7 +27,7 @@ from inventory import elf_dynamic
 ROOT = Path(os.environ.get('X28_OVERLAY') or Path(__file__).resolve().parents[2]/'overlay')
 
 # S80ucitrack: LuCI's apply restarts non-procd services such as Passwall2 only through its triggers (#198).
-ALLOWED_START = {'S00urngd','S05x28-wifi-l1','S80ucitrack','S10boot','S10system','S11sysctl','S12log','S18x28-switch','S18x28-wifi-client','S12rpcd','S19firewall','S19x28-modem','S19dropbear','S19dnsmasq','S20network','S35odhcpd','S50uhttpd','S95done','S95x28-telephony','S96x28-bootok','S96x28-dhcp','S97x28-wps','S99x28-leds'}
+ALLOWED_START = {'S00urngd','S05x28-wifi-l1','S80ucitrack','S10boot','S10system','S11sysctl','S12log','S18x28-switch','S18x28-wifi-client','S12rpcd','S19firewall','S19x28-modem','S19dropbear','S19dnsmasq','S20network','S35odhcpd','S50uhttpd','S95done','S95x28-telephony','S96x28-bootok','S96x28-dhcp','S97x28-wps','S99x28-leds','S99x28-packages-restore'}
 ALLOWED_STOP = {'K50dropbear','K89log','K90boot','K90network','K90umount'}
 
 LAN = 'br-lan'
@@ -550,6 +550,8 @@ config dhcp 'wan'
         record(control,files,scripts,[c.lstrip('/') for c in conffiles])
     for start,service,stop in pending:enable(start,service,stop)
     if 'etc/init.d/x28-telephony' in tree:enable(95,'x28-telephony')
+    # x28-update reinstalls the owner's added packages after an upgrade (zlt-x28-openwrt #654); older bundles do not carry it.
+    if 'etc/init.d/x28-packages-restore' in tree:enable(99,'x28-packages-restore')
     # The vendor kernel has these built in or as stock modules; record them so opkg sees every dependency met (#200).
     status=tree['usr/lib/opkg/status'][1].decode()
     have=set(re.findall(r'^Package: (.+)$',status,re.M))|{p.strip().split(' ')[0] for v in re.findall(r'^Provides: (.+)$',status,re.M) for p in v.split(',')}
