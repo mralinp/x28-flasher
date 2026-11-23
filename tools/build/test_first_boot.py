@@ -189,6 +189,13 @@ class PolicyTests(unittest.TestCase):
         self.assertNotIn(b'mtd',tree['etc/rc.local'][1])
         self.assertFalse(r['flashable'])
 
+    def test_devices_page_hides_the_kernels_virtual_devices(self):
+        js=r"var iface_patterns_ignore=[/^wmaster\d+/,/^gre\d+/,/^tunl\d+/,/^lo$/];"
+        out=f.luci_network(js)
+        for n in ('erspan','ip_vti','ip6_vti','ccmni'):self.assertIn('/^'+n+r'\d+/',out)
+        self.assertEqual(f.luci_network(out),out)  # idempotent
+        with self.assertRaises(ValueError):f.luci_network('changed LuCI')
+
     def test_the_switch_package_carries_the_script_this_generates(self):
         pkg=f.ROOT/'package/x28-switch/files/x28-switch.init'
         if not pkg.is_file():self.skipTest('the zlt-x28-openwrt checkout has no x28-switch package yet')

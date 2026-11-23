@@ -64,6 +64,10 @@ PASSWALL_FEEDS = ''.join(f'src/gz {n} https://master.dl.sourceforge.net/project/
 # mt_wifi reads these at interface up; the mtwifi handler rewrites only its keys in them (#127).
 # Stock LuCI 23.05 offers WPA only for mac80211/broadcom radios; add the modes the mtwifi handler maps (#127).
 LUCI_WIRELESS = 'www/luci-static/resources/view/network/wireless.js'
+# Devices page: stock LuCI already hides gre, gretap, ip6tnl, tunl, ifb; this kernel also makes erspan0, ip_vti0, ip6_vti0 and the
+# modem's 21 ccmni bearers, none of which a user can configure (zlt-x28-openwrt#643).
+LUCI_NETWORK = 'www/luci-static/resources/network.js'
+LUCI_DEV_HIDE = (r'/^tunl\d+/,/^lo$/]', r'/^tunl\d+/,/^erspan\d+/,/^ip_vti\d+/,/^ip6_vti\d+/,/^ccmni\d+/,/^lo$/]')
 LUCI_ANCHOR = "else if(hwtype=='broadcom'){"
 LUCI_MTWIFI = ("else if(hwtype=='mtwifi'){crypto_modes.push(['psk2','WPA2-PSK',35]);"
                "crypto_modes.push(['sae','WPA3-SAE',31]);crypto_modes.push(['sae-mixed','WPA2-PSK/WPA3-SAE Mixed Mode',30]);"
@@ -146,6 +150,14 @@ def luci_edits():
             ("L.hasSystemFeature('hostapd','11ax')&&hwmodelist.ax","(mtw||L.hasSystemFeature('hostapd','11ax'))&&hwmodelist.ax"),
             # The handler only sets up access points; client and ad-hoc come with #168.
             (LUCI_MODE_ANCHOR,"o.value('ap',_('Access Point'));if(hwtype!='mtwifi'){o.value('sta',_('Client'));o.value('adhoc',_('Ad-Hoc'));}")]
+
+
+def luci_network(js):
+    """Stock network.js with the kernel's unusable virtual devices ignored; refuses an unknown LuCI build."""
+    anchor,new=LUCI_DEV_HIDE
+    if new in js:return js
+    if js.count(anchor)!=1:raise ValueError('unexpected LuCI network.js: device ignore list anchor not found')
+    return js.replace(anchor,new)
 
 
 def luci_mtwifi(js):
@@ -347,6 +359,7 @@ def integrate(stage,key,stock_path,output,kmods_dir=None,ipks=()):
     own('usr/share/x28-wifi/regions',WIFI/'regions')
     own('usr/share/x28-wifi/channels5',WIFI/'channels5')
     if LUCI_WIRELESS in tree:put(LUCI_WIRELESS,luci_mtwifi(tree[LUCI_WIRELESS][1].decode()))
+    if LUCI_NETWORK in tree:put(LUCI_NETWORK,luci_network(tree[LUCI_NETWORK][1].decode()))
     if LUCI_STORAGE in tree:put(LUCI_STORAGE,luci_storage(tree[LUCI_STORAGE][1].decode()))
     if LUCI_ANALYSIS in tree:put(LUCI_ANALYSIS,luci_analysis(tree[LUCI_ANALYSIS][1].decode()))
     # Cellular WAN as a stock-looking netifd protocol (#135): the proto handler, its APN helper and the LuCI form.
