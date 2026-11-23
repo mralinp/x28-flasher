@@ -52,6 +52,18 @@ elif a[0]=='port' and a[2:]==['get','pvid']:print(d['pvid'][a[1]])
 else:sys.exit(2)
 '''
 
+# The init reads the table through uci (switch.sh); this fake answers `show network` and `get network.<sec>.<opt>` from the file.
+FAKE_UCI=r'''#!/usr/bin/env python3
+import os,re,sys
+a=[x for x in sys.argv[1:] if x!='-q']
+vl=[dict(re.findall(r"option (\w+) '([^']*)'",b)) for b in re.split(r'\n(?=config )',open(os.environ['FAKE_SW_CONFIG']).read()) if b.startswith('config switch_vlan')]
+if a==['show','network']:
+    for i in range(len(vl)):print(f'network.@switch_vlan[{i}]=switch_vlan')
+elif a[0]=='get':
+    m=re.fullmatch(r'network\.@switch_vlan\[(\d+)\]\.(\w+)',a[1]);print(vl[int(m[1])][m[2]])
+else:sys.exit(2)
+'''
+
 
 MODEM_SERVICES='1nvram_daemon 2ccci_fsd 3ccci_mdinit ql_ril_service ql_netd.init mipc_submonitor.init atci_service atcid'.split()
 
@@ -193,6 +205,7 @@ class PolicyTests(unittest.TestCase):
         pkg=f.ROOT/'package/x28-switch/files/x28-switch.init'
         if not pkg.is_file():self.skipTest('the zlt-x28-openwrt checkout has no x28-switch package yet')
         self.assertEqual(pkg.read_text(),f.SWITCH_INIT)
+        self.assertEqual((pkg.parent/'switch.sh').read_text(),f.SWITCH_SH)
 
     def test_packages_are_installed_as_packages_when_x28_base_is_among_them(self):
         def tgz(members):
@@ -292,14 +305,14 @@ class PolicyTests(unittest.TestCase):
         self.assertTrue(tree['sbin/swconfig'][0].isfile())
         self.assertIn('usr/lib/libnl-tiny.so',tree)
         self.assertEqual(tree['etc/rc.d/S18x28-switch'][0].linkname,'../init.d/x28-switch')
-        self.assertNotIn('lib/network/switch.sh',tree)
+        self.assertEqual(tree['lib/network/switch.sh'][1].decode(),f.SWITCH_SH)  # netifd's switch hook, ours (#128)
         net=tree['etc/config/network'][1].decode()
         for v,(ports,port) in f.SWITCH.items():
             self.assertIn(f" option vlan '{v}'\n option vid '{v}'\n option ports '{ports}'",net)
             self.assertIn(f" option port '{port}'\n option pvid '{v}'",net)
         self.assertNotIn('mii_mgr',tree['etc/init.d/x28-switch'][1].decode())
         self.assertNotIn('gpio',tree['etc/init.d/x28-switch'][1].decode())
-        self.assertEqual(r[1]['switch_table']['3'],'4 5t')
+        self.assertEqual(r[1]['switch_table']['3'],'4 5t');self.assertNotIn('4',r[1]['switch_table'])
 
     def integrate_ok(self):
         report=f.integrate(self.stage,self.key,self.stock,self.output)
@@ -309,12 +322,15 @@ class PolicyTests(unittest.TestCase):
         tree,_=self.integrate_ok()
         bin=self.root/'bin';bin.mkdir()
         (bin/'swconfig').write_text(FAKE_SWCONFIG);(bin/'swconfig').chmod(0o755)
+        (bin/'uci').write_text(FAKE_UCI);(bin/'uci').chmod(0o755)
+        failed=(self.root/'failed').as_posix()
+        (self.root/'switch.sh').write_text(tree['lib/network/switch.sh'][1].decode().replace('/tmp/x28-switch.failed',failed))
         (self.root/'network').write_bytes(tree['etc/config/network'][1])
         script=tree['etc/init.d/x28-switch'][1].decode().split('\n',1)[1]
         env={**os.environ,'PATH':f'{bin}:{os.environ["PATH"]}','FAKE_SW_STATE':str(self.root/'state'),
              'FAKE_SW_CONFIG':str(self.root/'network'),'FAKE_SW_MODE':mode}
         # /tmp marker path is rewritten so the test never touches the host's /tmp
-        script=script.replace('/tmp/x28-switch.failed',(self.root/'failed').as_posix())  # sh on Windows reads backslashes as escapes
+        script=script.replace('. /lib/network/switch.sh','. '+(self.root/'switch.sh').as_posix())  # sh on Windows reads backslashes as escapes
         return subprocess.run(['sh','-c',script+'\nstart'],env=env,capture_output=True,text=True)
 
     def test_init_passes_only_when_readback_matches(self):
