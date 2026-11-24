@@ -256,12 +256,13 @@ class PolicyTests(unittest.TestCase):
                                   ('./control.tar.gz',tgz([('./control',f'Package: {name}\nVersion: 1\nArchitecture: all\n'.encode())]+list(extra)))]))
             return path
         inits=[ipk(n,[(f'./etc/init.d/{n}',f'#!/bin/sh /etc/rc.common\nSTART={s}\n'.encode())]+([('./etc/board.json',b'{"switch":{}}\n')] if n=='x28-switch' else []),[('./prerm',b'#!/bin/sh\nexit 0\n')])
-               for n,s in (('x28-modem',19),('x28-leds',99),('x28-bootok',96),('x28-dhcp',96),('x28-wps',97),('x28-wifi-l1','05'),('x28-wifi-client',18),('x28-kmods',97),('x28-switch',18),('x28-telephony',95))]
+               for n,s in (('x28-passthrough',18),('x28-modem',19),('x28-leds',99),('x28-bootok',96),('x28-dhcp',96),('x28-wps',97),('x28-wifi-l1','05'),('x28-wifi-client',18),('x28-kmods',97),('x28-switch',18),('x28-telephony',95))]
         storage=ipk('x28-storage',[('./etc/config/fstab',b'mine\n')],[('./conffiles',b'/etc/config/fstab\n')])
         update=ipk('x28-update',[('./etc/init.d/x28-packages-restore',b'#!/bin/sh /etc/rc.common\nSTART=99\n')])
         mods=self.root/'mods';mods.mkdir();(mods/'wireguard.ko').write_bytes(b'wg')
         f.integrate(self.stage,self.key,self.stock,self.output,mods,inits+[storage,update,ipk('x28-base')])
         tree=f.load_archive(self.output/'rootfs-management.tar.gz');status=tree['usr/lib/opkg/status'][1].decode()
+        self.assertEqual(tree['etc/rc.d/S18x28-passthrough'][0].linkname,'../init.d/x28-passthrough')
         self.assertEqual(tree['etc/rc.d/S95x28-telephony'][0].linkname,'../init.d/x28-telephony')
         self.assertEqual(tree['etc/config/fstab'][1],b'mine\n')  # the package's file, not the overlay's
         self.assertIn('Conffiles:\n /etc/config/fstab '+f.digest(b'mine\n')+'\nStatus:',status)
