@@ -455,6 +455,7 @@ config timeserver 'ntp'
     for name in UBI_WRITERS:
         if name in tree:removed.append(name);del tree[name]
     enable(98,'sysntpd')  # without a set clock HTTPS (opkg) fails: the unit boots at 2010-01-01 (#169)
+    enable('00','sysfixtime',90)  # the RTC reads 2010-01-01; xray panics on that date, so Passwall2 never starts and NTP never gets through it (x28-flasher#143)
     enable(95,'done')  # `mount_root done`: without it mount_root discards the overlay at every boot (#143)
     # Stock defaults plus IPv6 on the LAN (#126): RA and DHCPv6 from the /64 the cellular WAN hands to netifd.
     put('etc/config/dhcp',"""config dnsmasq
