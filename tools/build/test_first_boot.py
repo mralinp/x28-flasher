@@ -81,7 +81,7 @@ class PolicyTests(unittest.TestCase):
         self.archive=self.stage/'rootfs-staging.tar.gz'
         with tarfile.open(self.archive,'w:gz') as t:
             for name,data in {'etc/inittab':b'ttyS0::askfirst:/bin/sh\n','etc/shadow':b'root:::0:99999:7:::\nservice:old:0:0:99999:7:::\n',
-                              'etc/init.d/openvpn':b'openvpn', 'etc/init.d/dropbear':b'PasswordAuth RootPasswordAuth\n\tcommand "$PROG" -F\n', 'etc/init.d/network':b'network', 'etc/init.d/dnsmasq':b'dnsmasq', 'etc/init.d/odhcpd':b'odhcpd', 'etc/init.d/rpcd':b'rpcd', 'etc/init.d/done':b'mount_root done', 'etc/init.d/uhttpd':b'uhttpd', 'etc/init.d/firewall':b'firewall', 'etc/init.d/sysntpd':b'sysntpd',
+                              'etc/init.d/openvpn':b'openvpn', 'etc/init.d/dropbear':b'PasswordAuth RootPasswordAuth\n\tcommand "$PROG" -F\n', 'etc/init.d/network':b'network', 'etc/init.d/dnsmasq':b'dnsmasq', 'etc/init.d/odhcpd':b'odhcpd', 'etc/init.d/rpcd':b'rpcd', 'etc/init.d/done':b'mount_root done', 'etc/init.d/uhttpd':b'uhttpd', 'etc/init.d/firewall':b'firewall', 'etc/init.d/sysntpd':b'sysntpd', 'etc/init.d/sysfixtime':b'sysfixtime',
                               f.LUCI_HEADERS[0]:b'<script src="{{ resource }}/luci.js?v=git-1.2-abc"></script>',
                               'www/luci-static/resources/view/network/wireless.js':b"o.ucisection=s.section;if(hwtype=='mac80211'){o=ss.taboption('general',form.Flag,'legacy_rates'}\nif(hwtype=='mac80211'){var mode=ss.children[0],bssid=ss.children[5],encr;}\nif(hwtype=='mac80211'){x}\nelse if(hwtype=='broadcom'){y}\n.then(L.bind(function(data){this.channels={'2g':L.hasSystemFeature('hostapd','acs')?['auto','auto',true]:[],'5g':L.hasSystemFeature('hostapd','acs')?['auto','auto',true]:[],'6g':[]};m=[L.hasSystemFeature('hostapd','11ac')&&hwmodelist.ac,L.hasSystemFeature('hostapd','11ax')&&hwmodelist.ax]}));\no.value('ap',_('Access Point'));o.value('sta',_('Client'));o.value('adhoc',_('Ad-Hoc'));uci.set('wireless',section_id,'network',nameval);var s=uci.get('network',name);if(s!=null&&s['.type']!='interface')return true;",
                               'sbin/ujail':b'jail', 'usr/lib/opkg/info/procd-ujail.list':b'/sbin/ujail',
@@ -199,6 +199,7 @@ class PolicyTests(unittest.TestCase):
         self.assertIn(b"option Port '22'",tree['etc/config/dropbear'][1])
         self.assertEqual(tree['etc/rc.d/S95done'][0].linkname,'../init.d/done')
         self.assertEqual(tree['etc/rc.d/S98sysntpd'][0].linkname,'../init.d/sysntpd')
+        for link in ('S00sysfixtime','K90sysfixtime'):self.assertEqual(tree['etc/rc.d/'+link][0].linkname,'../init.d/sysfixtime')  # x28-flasher#143
         self.assertIn("config timeserver 'ntp'",tree['etc/config/system'][1].decode())
         self.assertIn(b"option PasswordAuth 'on'",tree['etc/config/dropbear'][1])  # an empty root password never works over SSH, so this opens only once one is set
         self.assertIn(b"option RootPasswordAuth 'on'",tree['etc/config/dropbear'][1])
